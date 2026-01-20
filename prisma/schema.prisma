@@ -1,0 +1,247 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  phone     String
+  address   String
+  city      String
+  state     String
+  zipCode   String
+  country   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  quotations Quotation[]
+  invoices   Invoice[]
+
+  @@map("customers")
+}
+
+model Vendor {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  phone        String
+  address      String
+  city         String
+  state        String
+  zipCode      String
+  country      String
+  contactPerson String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  purchaseOrders PurchaseOrder[]
+
+  @@map("vendors")
+}
+
+model Quotation {
+  id             String   @id @default(cuid())
+  quotationNumber String  @unique
+  customerId    String
+  customer      Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  date          DateTime
+  validUntil    DateTime
+  subtotal      Float    @default(0)
+  taxRate       Float    @default(0)
+  taxAmount     Float    @default(0)
+  discount      Float    @default(0)
+  total         Float    @default(0)
+  status        String   @default("draft") // draft, sent, accepted, rejected, expired
+  terms         String?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items         QuotationItem[]
+  invoices      Invoice[]
+
+  @@map("quotations")
+}
+
+model QuotationItem {
+  id          String   @id @default(cuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Float
+  unitPrice   Float
+  discount    Float    @default(0)
+  tax         Float    @default(0)
+  total       Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("quotation_items")
+}
+
+model Invoice {
+  id            String   @id @default(cuid())
+  invoiceNumber String   @unique
+  quotationId   String?
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  date          DateTime
+  dueDate       DateTime
+  subtotal      Float    @default(0)
+  taxRate       Float    @default(0)
+  taxAmount     Float    @default(0)
+  discount      Float    @default(0)
+  total         Float    @default(0)
+  paidAmount    Float    @default(0)
+  status        String   @default("draft") // draft, sent, paid, overdue, cancelled
+  terms         String?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items         InvoiceItem[]
+
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Float
+  unitPrice   Float
+  discount    Float    @default(0)
+  tax         Float    @default(0)
+  total       Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("invoice_items")
+}
+
+model PurchaseOrder {
+  id              String   @id @default(cuid())
+  orderNumber     String   @unique
+  vendorId        String
+  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  date            DateTime
+  expectedDelivery DateTime
+  subtotal        Float    @default(0)
+  taxRate         Float    @default(0)
+  taxAmount       Float    @default(0)
+  discount        Float    @default(0)
+  total           Float    @default(0)
+  status          String   @default("draft") // draft, pending, approved, rejected, completed, cancelled
+  terms           String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  items           PurchaseOrderItem[]
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  description     String
+  quantity        Float
+  unitPrice       Float
+  discount        Float         @default(0)
+  tax             Float         @default(0)
+  total           Float
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@map("purchase_order_items")
+}
+
+model Vehicle {
+  id           String   @id @default(cuid())
+  make         String
+  model        String
+  year         Int
+  licensePlate String   @unique
+  vin          String   @unique
+  color        String
+  mileage      Int      @default(0)
+  purchaseDate DateTime
+  purchasePrice Float
+  status       String   @default("active") // active, maintenance, retired
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("vehicles")
+}
+
+model Employee {
+  id            String   @id @default(cuid())
+  employeeNumber String   @unique
+  firstName     String
+  lastName      String
+  email         String   @unique
+  phone         String
+  address       String
+  city          String
+  state         String
+  zipCode       String
+  country       String
+  position      String
+  department    String
+  hireDate      DateTime
+  salary        Float
+  status        String   @default("active") // active, inactive, terminated
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  payslips      Payslip[]
+
+  @@map("employees")
+}
+
+model Payslip {
+  id            String   @id @default(cuid())
+  payslipNumber String   @unique
+  employeeId    String
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  payPeriodStart DateTime
+  payPeriodEnd   DateTime
+  issueDate     DateTime
+  baseSalary     Float    @default(0)
+  overtime       Float    @default(0)
+  bonuses        Float    @default(0)
+  deductions     Float    @default(0)
+  tax            Float    @default(0)
+  netPay         Float    @default(0)
+  status         String   @default("draft") // draft, issued, paid
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("payslips")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      String   @default("user") // admin, user, manager
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
