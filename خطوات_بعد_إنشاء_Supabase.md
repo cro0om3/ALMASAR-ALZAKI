@@ -19,10 +19,12 @@
 
 **✅ Connection String الكامل:**
 ```
-postgresql://postgres:Fhd%402992692Fhd@db.tundlptcusiogiaagsba.supabase.co:5432/postgres
+postgresql://postgres:Fhd%23%232992692@db.tundlptcusiogiaagsba.supabase.co:5432/postgres
 ```
 
-⚠️ **ملاحظة:** تم ترميز الرمز `@` في كلمة المرور إلى `%40` (URL encoding)
+⚠️ **ملاحظة:** تم ترميز الرمز `#` في كلمة المرور إلى `%23` (URL encoding)
+- كلمة المرور: `Fhd##2992692`
+- في Connection String: `Fhd%23%232992692`
 
 ---
 
@@ -38,12 +40,12 @@ postgresql://postgres:Fhd%402992692Fhd@db.tundlptcusiogiaagsba.supabase.co:5432/
 - **Name**: `DATABASE_URL`
 - **Value**: 
   ```
-  postgresql://postgres:Fhd%402992692Fhd@db.tundlptcusiogiaagsba.supabase.co:5432/postgres
+  postgresql://postgres:Fhd%23%232992692@db.tundlptcusiogiaagsba.supabase.co:5432/postgres
   ```
 - **Environment**: اختر **Production, Preview, Development** (الكل)
 - اضغط **Save**
 
-⚠️ **ملاحظة:** تم ترميز الرمز `@` في كلمة المرور إلى `%40`
+⚠️ **ملاحظة:** تم ترميز الرمز `#` في كلمة المرور إلى `%23`
 
 #### ب. Supabase API Keys (اختياري - للاستخدام المستقبلي)
 إذا أردت استخدام Supabase Client SDK لاحقاً:
@@ -178,10 +180,10 @@ SUPABASE_SERVICE_ROLE_KEY=sb_secret_8hIdHJTfUdAwUTyHjHaAIw_j0VDaTmx
 
 **Direct Connection:**
 ```
-postgresql://postgres:Fhd%402992692Fhd@db.tundlptcusiogiaagsba.supabase.co:5432/postgres
+postgresql://postgres:Fhd%23%232992692@db.tundlptcusiogiaagsba.supabase.co:5432/postgres
 ```
 
-⚠️ **ملاحظة:** تم ترميز الرمز `@` في كلمة المرور إلى `%40`
+⚠️ **ملاحظة:** تم ترميز الرمز `#` في كلمة المرور إلى `%23`
 
 **Connection Pooling (موصى به):**
 ```

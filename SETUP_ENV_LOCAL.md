@@ -24,7 +24,7 @@ NODE_ENV=development
 NEXT_OUTPUT_MODE=standalone
 
 # Database Connection (Supabase)
-DATABASE_URL=postgresql://postgres:Fhd%402992692Fhd@db.tundlptcusiogiaagsba.supabase.co:5432/postgres
+DATABASE_URL=postgresql://postgres:Fhd%23%232992692@db.tundlptcusiogiaagsba.supabase.co:5432/postgres
 ```
 
 ---

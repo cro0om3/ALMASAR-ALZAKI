@@ -21,7 +21,7 @@ async function testDatabase() {
       console.error('❌ ERROR: DATABASE_URL is not set!');
       console.log('\n💡 Solution:');
       console.log('   1. Create .env.local file');
-      console.log('   2. Add: DATABASE_URL="postgresql://postgres:Fhd%402992692Fhd@db.tundlptcusiogiaagsba.supabase.co:5432/postgres"');
+      console.log('   2. Add: DATABASE_URL="postgresql://postgres:Fhd%23%232992692@db.tundlptcusiogiaagsba.supabase.co:5432/postgres"');
       process.exit(1);
     }
 

@@ -28,10 +28,12 @@ sb_secret_8hIdHJTfUdAwUTyHjHaAIw_j0VDaTmx
 ### ✅ Connection String الكامل:
 
 ```
-postgresql://postgres:Fhd%402992692Fhd@db.tundlptcusiogiaagsba.supabase.co:5432/postgres
+postgresql://postgres:Fhd%23%232992692@db.tundlptcusiogiaagsba.supabase.co:5432/postgres
 ```
 
-⚠️ **ملاحظة:** تم ترميز الرمز `@` إلى `%40` في كلمة المرور (URL encoding)
+⚠️ **ملاحظة:** تم ترميز الرمز `#` إلى `%23` في كلمة المرور (URL encoding)
+- كلمة المرور: `Fhd##2992692`
+- في Connection String: `Fhd%23%232992692`
 
 ### للتحقق من Connection String:
 يمكنك الحصول عليه أيضاً من:
@@ -45,10 +47,10 @@ postgresql://postgres:Fhd%402992692Fhd@db.tundlptcusiogiaagsba.supabase.co:5432/
 
 #### 1. DATABASE_URL (مطلوب) ⭐
 ```
-postgresql://postgres:Fhd%402992692Fhd@db.tundlptcusiogiaagsba.supabase.co:5432/postgres
+postgresql://postgres:Fhd%23%232992692@db.tundlptcusiogiaagsba.supabase.co:5432/postgres
 ```
 
-⚠️ **ملاحظة:** تم ترميز الرمز `@` في كلمة المرور إلى `%40`
+⚠️ **ملاحظة:** تم ترميز الرمز `#` في كلمة المرور إلى `%23`
 
 #### 2. Supabase API Keys (اختياري - للاستخدام المستقبلي)
 
