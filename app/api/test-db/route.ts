@@ -12,7 +12,7 @@ export async function GET() {
         { 
           success: false, 
           error: 'Prisma is not initialized',
-          message: 'Please check DATABASE_URL environment variable',
+          message: 'Please run: npx prisma generate',
           hasDatabaseUrl,
           timestamp: new Date().toISOString(),
         },
@@ -20,8 +20,31 @@ export async function GET() {
       )
     }
 
-    // Test connection first
-    await prisma.$connect()
+    // Test connection first with timeout
+    try {
+      await Promise.race([
+        prisma.$connect(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Connection timeout after 10 seconds')), 10000)
+        )
+      ])
+    } catch (connectError: any) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Failed to connect to database',
+          errorType: 'Connection Error',
+          errorDetails: connectError.message,
+          hasDatabaseUrl,
+          databaseUrlPreview: process.env.DATABASE_URL 
+            ? `${process.env.DATABASE_URL.substring(0, 50)}...` 
+            : 'Not set',
+          solution: 'Check DATABASE_URL in Vercel Environment Variables and ensure Supabase project is active',
+          timestamp: new Date().toISOString(),
+        },
+        { status: 500 }
+      )
+    }
 
     // Check all tables exist
     const tables = await prisma.$queryRaw<Array<{ table_name: string }>>`
