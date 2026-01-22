@@ -82,12 +82,34 @@ export async function GET() {
       timestamp: new Date().toISOString(),
     })
   } catch (error: any) {
+    // More detailed error information
+    const errorMessage = error.message || 'Database connection failed'
+    const errorDetails = error.toString()
+    const errorCode = error.code || 'UNKNOWN'
+    
+    // Check specific error types
+    let errorType = 'Unknown error'
+    if (errorMessage.includes('does not exist')) {
+      errorType = 'Table does not exist - Run supabase-schema.sql in Supabase SQL Editor'
+    } else if (errorMessage.includes('connection') || errorMessage.includes('ECONNREFUSED')) {
+      errorType = 'Connection failed - Check DATABASE_URL in Vercel Environment Variables'
+    } else if (errorMessage.includes('authentication')) {
+      errorType = 'Authentication failed - Check database password in DATABASE_URL'
+    } else if (errorMessage.includes('timeout')) {
+      errorType = 'Connection timeout - Check if Supabase project is active'
+    }
+    
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Database connection failed',
-        details: error.toString(),
+        error: errorMessage,
+        errorType,
+        errorCode,
+        details: errorDetails,
         hasDatabaseUrl: !!process.env.DATABASE_URL,
+        databaseUrlPreview: process.env.DATABASE_URL 
+          ? `${process.env.DATABASE_URL.substring(0, 30)}...` 
+          : 'Not set',
         timestamp: new Date().toISOString(),
       },
       { status: 500 }
