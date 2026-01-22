@@ -19,10 +19,12 @@
 
 **✅ Connection String الكامل:**
 ```
-postgresql://postgres:Fhd%23%232992692@db.tundlptcusiogiaagsba.supabase.co:5432/postgres
+postgresql://postgres:Fhd%23%232992692@db.tundlptcusiogiaagsba.supabase.co:5432/postgres?sslmode=require
 ```
 
-⚠️ **ملاحظة:** تم ترميز الرمز `#` في كلمة المرور إلى `%23` (URL encoding)
+⚠️ **ملاحظة:** 
+- تم ترميز الرمز `#` في كلمة المرور إلى `%23` (URL encoding)
+- تم إضافة `?sslmode=require` للاتصال الآمن
 - كلمة المرور: `Fhd##2992692`
 - في Connection String: `Fhd%23%232992692`
 
@@ -40,7 +42,7 @@ postgresql://postgres:Fhd%23%232992692@db.tundlptcusiogiaagsba.supabase.co:5432/
 - **Name**: `DATABASE_URL`
 - **Value**: 
   ```
-  postgresql://postgres:Fhd%23%232992692@db.tundlptcusiogiaagsba.supabase.co:5432/postgres
+  postgresql://postgres:Fhd%23%232992692@db.tundlptcusiogiaagsba.supabase.co:5432/postgres?sslmode=require
   ```
 - **Environment**: اختر **Production, Preview, Development** (الكل)
 - اضغط **Save**
