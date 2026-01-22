@@ -1,10 +1,15 @@
 // Simple database connection test
 // Run: node test-db.js
+// Or: npm run db:test
+
+// Load environment variables
+require('dotenv').config({ path: '.env.local' });
+require('dotenv').config(); // Also try .env
 
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient({
-  log: ['query', 'error', 'warn'],
+  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
 });
 
 async function testDatabase() {
@@ -21,6 +26,7 @@ async function testDatabase() {
     }
 
     console.log('✅ DATABASE_URL is set');
+    console.log('📍 Database:', process.env.DATABASE_URL.includes('supabase') ? 'Supabase' : 'Other');
     console.log('🔌 Connecting to database...\n');
 
     // Test connection
