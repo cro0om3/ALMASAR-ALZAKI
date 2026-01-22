@@ -61,7 +61,7 @@ async function testDatabase() {
 
     console.log(`Found ${tables.length} tables:\n`);
     
-    const foundTables = tables.map((t: any) => t.table_name);
+    const foundTables = tables.map((t) => t.table_name);
     let allTablesExist = true;
 
     expectedTables.forEach(table => {
@@ -96,9 +96,9 @@ async function testDatabase() {
 
     console.log('\n🎉 All tests passed! Database is ready to use!\n');
     
-  } catch (error: any) {
+  } catch (error) {
     console.error('\n❌ Database test failed!\n');
-    console.error('Error:', error.message);
+    console.error('Error:', error.message || error);
     
     if (error.message.includes('does not exist')) {
       console.log('\n💡 Solution:');
