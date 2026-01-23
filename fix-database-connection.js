@@ -14,13 +14,15 @@ const PROJECT_ID = 'prj_vYVJ3thAnk1Z78QK6vmrKfD2rY7k';
 const SUPABASE_PROJECT_REF = 'tundlptcusiogiaagsba';
 const DB_PASSWORD = 'Fhd%23%232992692'; // URL encoded
 
-// Connection Pooling URL - Session mode (recommended for serverless)
-// Format: postgresql://postgres.PROJECT_REF:PASSWORD@REGION.pooler.supabase.com:6543/postgres?sslmode=require
-// For me-central-1 region
-const CONNECTION_POOLING_URL = `postgresql://postgres.${SUPABASE_PROJECT_REF}:${DB_PASSWORD}@aws-0-me-central-1.pooler.supabase.com:6543/postgres?sslmode=require`;
-
-// Direct Connection URL (fallback)
+// Try Direct Connection first (more reliable)
+// Connection Pooling URL might not be available for all projects
+// Format: postgresql://postgres:PASSWORD@db.PROJECT_REF.supabase.co:5432/postgres?sslmode=require
 const DIRECT_CONNECTION_URL = `postgresql://postgres:${DB_PASSWORD}@db.${SUPABASE_PROJECT_REF}.supabase.co:5432/postgres?sslmode=require`;
+
+// Connection Pooling URL - Session mode (if available)
+// Format: postgresql://postgres.PROJECT_REF:PASSWORD@REGION.pooler.supabase.com:6543/postgres?sslmode=require
+// Note: Pooler URL varies by region and project - get it from Supabase Dashboard
+const CONNECTION_POOLING_URL = `postgresql://postgres.${SUPABASE_PROJECT_REF}:${DB_PASSWORD}@aws-0-me-central-1.pooler.supabase.com:6543/postgres?sslmode=require`;
 
 function makeRequest(options, data) {
   return new Promise((resolve, reject) => {
@@ -116,9 +118,9 @@ async function main() {
       console.log(`   Current value preview: ${databaseUrlVar.value ? databaseUrlVar.value.substring(0, 60) + '...' : 'Not set'}\n`);
       
       // Check if it's already correct
-      if (databaseUrlVar.value === CONNECTION_POOLING_URL) {
+      if (databaseUrlVar.value === DIRECT_CONNECTION_URL) {
         console.log('✅ DATABASE_URL is already correct!');
-        console.log('   Using Connection Pooling URL\n');
+        console.log('   Using Direct Connection URL\n');
         return;
       }
       
@@ -130,11 +132,14 @@ async function main() {
       console.log('   ⚠️  DATABASE_URL not found\n');
     }
 
-    // Add new with Connection Pooling
-    console.log('📝 Adding DATABASE_URL with Connection Pooling...');
-    console.log(`   URL: ${CONNECTION_POOLING_URL.substring(0, 80)}...\n`);
+    // Add new with Direct Connection (more reliable)
+    // Note: If Connection Pooling is needed, get the correct URL from Supabase Dashboard
+    console.log('📝 Adding DATABASE_URL with Direct Connection...');
+    console.log('   ⚠️  Using Direct Connection (more reliable for now)');
+    console.log('   💡 To use Connection Pooling, get the URL from Supabase Dashboard → Settings → Database → Connection Pooling\n');
+    console.log(`   URL: ${DIRECT_CONNECTION_URL.substring(0, 80)}...\n`);
     
-    const addResult = await addVercelEnvVar('DATABASE_URL', CONNECTION_POOLING_URL);
+    const addResult = await addVercelEnvVar('DATABASE_URL', DIRECT_CONNECTION_URL);
     
     if (addResult.status === 200 || addResult.status === 201) {
       console.log('   ✅ DATABASE_URL added successfully!\n');
