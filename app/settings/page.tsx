@@ -31,7 +31,8 @@ import { Alert } from "@/components/shared/Alert"
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner"
 import { useToast } from "@/lib/hooks/use-toast"
 import { useTheme } from "@/lib/hooks/use-theme"
-import { Save, Upload, Image as ImageIcon, Shield, Lock, Building2, Receipt, Bell, Monitor, Database, Trash2, RefreshCw, Info, Globe, Calendar, Printer, Sparkles } from "lucide-react"
+import { Save, Upload, Image as ImageIcon, Shield, Lock, Building2, Receipt, Bell, Monitor, Database, Trash2, RefreshCw, Info, Globe, Calendar, Printer, Sparkles, Users } from "lucide-react"
+import { UsersManagement } from "@/components/settings/UsersManagement"
 import Image from "next/image"
 import { Permission, UserRole } from "@/types"
 import { aiService } from "@/lib/services/ai-service"
@@ -845,6 +846,16 @@ export default function SettingsPage() {
               })}
             </div>
           </Card>
+        </div>
+      ),
+    },
+    {
+      id: "users",
+      label: "Users",
+      icon: <Users className="h-4 w-4" />,
+      content: (
+        <div className="space-y-6">
+          <UsersManagement />
         </div>
       ),
     },

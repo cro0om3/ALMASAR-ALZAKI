@@ -1,86 +1,103 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState } from 'react'
-import { User, Session, AuthError } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { userService, type User } from '@/lib/data/user-service'
 
 interface AuthContextType {
   user: User | null
-  session: Session | null
   loading: boolean
-  signInWithGoogle: () => Promise<void>
+  signIn: (email: string, pinCode: string) => Promise<void>
   signOut: () => Promise<void>
-  refreshSession: () => Promise<void>
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      setLoading(false)
-    })
-
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      setLoading(false)
-      
-      if (session) {
-        router.refresh()
+    // Check for stored session
+    const storedUser = localStorage.getItem('auth_user')
+    if (storedUser) {
+      try {
+        const parsedUser = JSON.parse(storedUser)
+        setUser(parsedUser)
+      } catch (error) {
+        console.error('Error parsing stored user:', error)
+        localStorage.removeItem('auth_user')
       }
-    })
+    }
+    setLoading(false)
+  }, [])
 
-    return () => subscription.unsubscribe()
-  }, [router])
-
-  const signInWithGoogle = async () => {
+  const signIn = async (email: string, pinCode: string) => {
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, pinCode }),
       })
-      if (error) throw error
-    } catch (error) {
-      console.error('Error signing in with Google:', error)
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Invalid email or PIN code')
+      }
+
+      const verifiedUser = await response.json()
+      
+      // Store user in localStorage and cookie
+      const userToStore = {
+        id: verifiedUser.id,
+        email: verifiedUser.email,
+        name: verifiedUser.name,
+        role: verifiedUser.role,
+      }
+      localStorage.setItem('auth_user', JSON.stringify(userToStore))
+      
+      // Set cookie for middleware
+      document.cookie = `auth_user=${JSON.stringify(userToStore)}; path=/; max-age=86400`
+      
+      setUser(verifiedUser)
+      router.push('/')
+      router.refresh()
+    } catch (error: any) {
+      console.error('Sign in error:', error)
       throw error
     }
   }
 
   const signOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut()
-      if (error) throw error
+      localStorage.removeItem('auth_user')
+      setUser(null)
       router.push('/login')
       router.refresh()
     } catch (error) {
-      console.error('Error signing out:', error)
+      console.error('Sign out error:', error)
       throw error
     }
   }
 
-  const refreshSession = async () => {
+  const refreshUser = async () => {
+    if (!user) return
     try {
-      const { data: { session }, error } = await supabase.auth.refreshSession()
-      if (error) throw error
-      setSession(session)
-      setUser(session?.user ?? null)
+      const updatedUser = await userService.getById(user.id)
+      if (updatedUser) {
+        const userToStore = {
+          id: updatedUser.id,
+          email: updatedUser.email,
+          name: updatedUser.name,
+          role: updatedUser.role,
+        }
+        localStorage.setItem('auth_user', JSON.stringify(userToStore))
+        setUser(updatedUser)
+      }
     } catch (error) {
-      console.error('Error refreshing session:', error)
+      console.error('Error refreshing user:', error)
     }
   }
 
@@ -88,11 +105,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
-        session,
         loading,
-        signInWithGoogle,
+        signIn,
         signOut,
-        refreshSession,
+        refreshUser,
       }}
     >
       {children}

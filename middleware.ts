@@ -1,70 +1,21 @@
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export async function middleware(req: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: req.headers,
-    },
-  })
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return req.cookies.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          req.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-          response = NextResponse.next({
-            request: {
-              headers: req.headers,
-            },
-          })
-          response.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-        },
-        remove(name: string, options: any) {
-          req.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-          response = NextResponse.next({
-            request: {
-              headers: req.headers,
-            },
-          })
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-        },
-      },
-    }
-  )
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-
   // Public routes that don't require authentication
-  const publicRoutes = ['/login', '/auth/callback']
+  const publicRoutes = ['/login']
   const isPublicRoute = publicRoutes.some(route => req.nextUrl.pathname.startsWith(route))
 
+  // For API routes, allow them (they handle auth internally)
+  if (req.nextUrl.pathname.startsWith('/api/')) {
+    return NextResponse.next()
+  }
+
+  // Check for auth token in cookie (set by client-side)
+  const authUser = req.cookies.get('auth_user')?.value
+
   // If user is not authenticated and trying to access protected route
-  if (!session && !isPublicRoute) {
+  if (!authUser && !isPublicRoute) {
     const redirectUrl = req.nextUrl.clone()
     redirectUrl.pathname = '/login'
     redirectUrl.searchParams.set('redirectedFrom', req.nextUrl.pathname)
@@ -72,11 +23,11 @@ export async function middleware(req: NextRequest) {
   }
 
   // If user is authenticated and trying to access login page, redirect to home
-  if (session && req.nextUrl.pathname === '/login') {
+  if (authUser && req.nextUrl.pathname === '/login') {
     return NextResponse.redirect(new URL('/', req.url))
   }
 
-  return response
+  return NextResponse.next()
 }
 
 export const config = {

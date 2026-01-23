@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import Link from "next/link"
 import { notificationService } from "@/lib/data/notification-service"
 import { Notification } from "@/types"
 import { formatDate } from "@/lib/utils"
@@ -215,8 +216,13 @@ export function Header() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="border-blue-200">
               <DropdownMenuLabel className="text-blue-900">
-                {user?.email || 'Admin'}
+                {user?.name || user?.email || 'User'}
               </DropdownMenuLabel>
+              <div className="px-2 py-1.5">
+                <Badge variant="outline" className="text-xs">
+                  {user?.role || 'user'}
+                </Badge>
+              </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="hover:bg-blue-50">Profile</DropdownMenuItem>
               <DropdownMenuItem className="hover:bg-blue-50">
