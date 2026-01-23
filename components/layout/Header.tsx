@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { User, Bell, Check, Trash2, Sun, Moon, LogOut } from "lucide-react"
 import { useTheme } from "@/lib/hooks/use-theme"
 import { useAuth } from "@/contexts/AuthContext"
@@ -16,7 +17,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import Link from "next/link"
 import { notificationService } from "@/lib/data/notification-service"
 import { Notification } from "@/types"
 import { formatDate } from "@/lib/utils"
