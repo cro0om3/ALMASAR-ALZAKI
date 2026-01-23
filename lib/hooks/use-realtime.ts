@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
-type RealtimeCallback<T = any> = (payload: RealtimePostgresChangesPayload<T>) => void
+type RealtimeCallback<T extends { [key: string]: any } = { [key: string]: any }> = (payload: RealtimePostgresChangesPayload<T>) => void
 
-export function useRealtime<T = any>(
+export function useRealtime<T extends { [key: string]: any } = { [key: string]: any }>(
   table: string,
   callback: RealtimeCallback<T>,
   filter?: string

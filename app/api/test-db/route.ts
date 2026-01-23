@@ -70,8 +70,8 @@ export async function GET() {
       'payslips'
     ]
 
-    const foundTables = tables.map(t => t.table_name)
-    const missingTables = expectedTables.filter(t => !foundTables.includes(t))
+    const foundTables = tables.map((t: { table_name: string }) => t.table_name)
+    const missingTables = expectedTables.filter((t: string) => !foundTables.includes(t))
 
     // Try to query the database
     const customerCount = await prisma.customer.count()

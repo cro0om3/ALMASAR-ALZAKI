@@ -87,7 +87,7 @@ export const dbQuotationService = {
       orderBy: { createdAt: 'desc' },
     })
     // Transform to match Quotation type
-    return quotations.map(q => ({
+    return quotations.map((q: any) => ({
       ...q,
       date: q.date.toISOString(),
       validUntil: q.validUntil.toISOString(),
@@ -177,7 +177,7 @@ export const dbInvoiceService = {
       include: { customer: true, items: true, quotation: true },
       orderBy: { createdAt: 'desc' },
     })
-    return invoices.map(inv => ({
+    return invoices.map((inv: any) => ({
       ...inv,
       date: inv.date.toISOString(),
       dueDate: inv.dueDate.toISOString(),
@@ -266,7 +266,7 @@ export const dbPurchaseOrderService = {
       include: { vendor: true, items: true },
       orderBy: { createdAt: 'desc' },
     })
-    return orders.map(po => ({
+    return orders.map((po: any) => ({
       ...po,
       date: po.date.toISOString(),
       expectedDelivery: po.expectedDelivery.toISOString(),
@@ -367,7 +367,7 @@ export const dbVehicleService = {
     const vehicles = await prisma.vehicle.findMany({
       orderBy: { createdAt: 'desc' },
     })
-    return vehicles.map(v => ({
+    return vehicles.map((v: any) => ({
       ...v,
       purchaseDate: v.purchaseDate.toISOString(),
       createdAt: v.createdAt.toISOString(),
@@ -433,7 +433,7 @@ export const dbEmployeeService = {
     const employees = await prisma.employee.findMany({
       orderBy: { createdAt: 'desc' },
     })
-    return employees.map(e => ({
+    return employees.map((e: any) => ({
       ...e,
       hireDate: e.hireDate.toISOString(),
       createdAt: e.createdAt.toISOString(),
@@ -500,7 +500,7 @@ export const dbPayslipService = {
       include: { employee: true },
       orderBy: { createdAt: 'desc' },
     })
-    return payslips.map(p => ({
+    return payslips.map((p: any) => ({
       ...p,
       payPeriodStart: p.payPeriodStart.toISOString(),
       payPeriodEnd: p.payPeriodEnd.toISOString(),
@@ -534,7 +534,7 @@ export const dbPayslipService = {
       include: { employee: true },
       orderBy: { createdAt: 'desc' },
     })
-    return payslips.map(p => ({
+    return payslips.map((p: any) => ({
       ...p,
       payPeriodStart: p.payPeriodStart.toISOString(),
       payPeriodEnd: p.payPeriodEnd.toISOString(),
@@ -601,7 +601,7 @@ export const dbReceiptService = {
       include: { invoice: true, customer: true },
       orderBy: { createdAt: 'desc' },
     })
-    return receipts.map(r => ({
+    return receipts.map((r: any) => ({
       ...r,
       date: r.date.toISOString(),
       paymentDate: r.paymentDate.toISOString(),
@@ -633,7 +633,7 @@ export const dbReceiptService = {
       include: { invoice: true, customer: true },
       orderBy: { createdAt: 'desc' },
     })
-    return receipts.map(r => ({
+    return receipts.map((r: any) => ({
       ...r,
       date: r.date.toISOString(),
       paymentDate: r.paymentDate.toISOString(),
