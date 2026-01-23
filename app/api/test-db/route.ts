@@ -81,6 +81,18 @@ export async function GET() {
     const vehicleCount = await prisma.vehicle.count()
     const vendorCount = await prisma.vendor.count()
 
+    // Check admin user
+    const adminUser = await prisma.user.findUnique({
+      where: { email: 'admin@example.com' },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        createdAt: true,
+      }
+    })
+
     return NextResponse.json({
       success: true,
       message: 'Database connection successful!',
@@ -101,6 +113,15 @@ export async function GET() {
         employees: employeeCount,
         vehicles: vehicleCount,
         vendors: vendorCount,
+      },
+      adminUser: adminUser ? {
+        exists: true,
+        email: adminUser.email,
+        name: adminUser.name,
+        role: adminUser.role,
+      } : {
+        exists: false,
+        message: 'Admin user not found. Run: node create-admin-user.js'
       },
       timestamp: new Date().toISOString(),
     })
