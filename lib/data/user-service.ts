@@ -94,27 +94,46 @@ export const userService = {
 
   // Verify PIN code (search all users and find matching PIN)
   verifyPinCode: async (pinCode: string): Promise<User | null> => {
-    checkPrisma()
-    // Get all users
-    const users = await prisma.user.findMany()
-    
-    // Try to find user with matching PIN code
-    for (const user of users) {
-      const isValid = await verifyPinCode(pinCode, user.password)
-      if (isValid) {
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          pinCode: user.password,
-          role: user.role as 'admin' | 'user' | 'manager',
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt,
+    try {
+      checkPrisma()
+      
+      // Get all users
+      const users = await prisma.user.findMany()
+      
+      if (users.length === 0) {
+        return null
+      }
+      
+      // Try to find user with matching PIN code
+      for (const user of users) {
+        if (!user.password) {
+          continue
+        }
+        
+        try {
+          const isValid = await verifyPinCode(pinCode, user.password)
+          if (isValid) {
+            return {
+              id: user.id,
+              email: user.email,
+              name: user.name,
+              pinCode: user.password,
+              role: user.role as 'admin' | 'user' | 'manager',
+              createdAt: user.createdAt,
+              updatedAt: user.updatedAt,
+            }
+          }
+        } catch (err) {
+          // Skip invalid password hashes
+          continue
         }
       }
+      
+      return null
+    } catch (error: any) {
+      console.error('Error verifying PIN code:', error)
+      throw new Error(`Failed to verify PIN code: ${error.message}`)
     }
-    
-    return null
   },
 
   // Create user

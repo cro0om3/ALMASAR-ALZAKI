@@ -13,7 +13,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Verify PIN code
     const verifiedUser = await userService.verifyPinCode(pinCode)
+    
     if (!verifiedUser) {
       return NextResponse.json(
         { error: 'Invalid PIN code' },
@@ -25,8 +27,14 @@ export async function POST(request: NextRequest) {
     const { pinCode: _, ...safeUser } = verifiedUser
     return NextResponse.json(safeUser)
   } catch (error: any) {
+    console.error('Login error:', error)
+    // Return more specific error message
+    const errorMessage = error.message || 'Failed to authenticate'
     return NextResponse.json(
-      { error: 'Failed to authenticate', details: error.message },
+      { 
+        error: 'Failed to authenticate', 
+        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined 
+      },
       { status: 500 }
     )
   }
