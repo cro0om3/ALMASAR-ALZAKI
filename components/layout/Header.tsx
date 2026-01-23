@@ -20,7 +20,6 @@ import Link from "next/link"
 import { notificationService } from "@/lib/data/notification-service"
 import { Notification } from "@/types"
 import { formatDate } from "@/lib/utils"
-import Link from "next/link"
 
 export function Header() {
   const router = useRouter()
