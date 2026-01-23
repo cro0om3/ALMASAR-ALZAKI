@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { User, Bell, Check, Trash2, Sun, Moon } from "lucide-react"
+import { User, Bell, Check, Trash2, Sun, Moon, LogOut } from "lucide-react"
 import { useTheme } from "@/lib/hooks/use-theme"
+import { useAuth } from "@/contexts/AuthContext"
 import { SearchBar } from "@/components/shared/SearchBar"
 import {
   DropdownMenu,
@@ -23,6 +24,7 @@ import Link from "next/link"
 export function Header() {
   const router = useRouter()
   const { theme, toggleTheme, mounted } = useTheme()
+  const { user, signOut } = useAuth()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
 
@@ -212,14 +214,22 @@ export function Header() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="border-blue-200">
-              <DropdownMenuLabel className="text-blue-900">Admin</DropdownMenuLabel>
+              <DropdownMenuLabel className="text-blue-900">
+                {user?.email || 'Admin'}
+              </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="hover:bg-blue-50">Profile</DropdownMenuItem>
               <DropdownMenuItem className="hover:bg-blue-50">
                 <Link href="/settings" className="w-full">Settings</Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-600 hover:bg-red-50">Logout</DropdownMenuItem>
+              <DropdownMenuItem 
+                className="text-red-600 hover:bg-red-50 cursor-pointer"
+                onClick={signOut}
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Logout
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
