@@ -4,19 +4,19 @@ import { userService } from '@/lib/data/user-service'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { email, pinCode } = body
+    const { pinCode } = body
 
-    if (!email || !pinCode) {
+    if (!pinCode) {
       return NextResponse.json(
-        { error: 'Email and PIN code are required' },
+        { error: 'PIN code is required' },
         { status: 400 }
       )
     }
 
-    const verifiedUser = await userService.verifyPinCode(email, pinCode)
+    const verifiedUser = await userService.verifyPinCode(pinCode)
     if (!verifiedUser) {
       return NextResponse.json(
-        { error: 'Invalid email or PIN code' },
+        { error: 'Invalid PIN code' },
         { status: 401 }
       )
     }

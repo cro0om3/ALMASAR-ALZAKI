@@ -7,7 +7,7 @@ import { userService, type User } from '@/lib/data/user-service'
 interface AuthContextType {
   user: User | null
   loading: boolean
-  signIn: (email: string, pinCode: string) => Promise<void>
+  signIn: (pinCode: string) => Promise<void>
   signOut: () => Promise<void>
   refreshUser: () => Promise<void>
 }
@@ -34,12 +34,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(false)
   }, [])
 
-  const signIn = async (email: string, pinCode: string) => {
+  const signIn = async (pinCode: string) => {
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, pinCode }),
+        body: JSON.stringify({ pinCode }),
       })
 
       if (!response.ok) {

@@ -6,11 +6,10 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Loader2, Lock, Mail } from 'lucide-react'
+import { Loader2, Lock } from 'lucide-react'
 
 export function LoginForm() {
   const { signIn, loading } = useAuth()
-  const [email, setEmail] = useState('')
   const [pinCode, setPinCode] = useState('')
   const [isSigningIn, setIsSigningIn] = useState(false)
   const [error, setError] = useState('')
@@ -19,14 +18,14 @@ export function LoginForm() {
     e.preventDefault()
     setError('')
     
-    if (!email || !pinCode) {
-      setError('الرجاء إدخال البريد الإلكتروني ورمز PIN')
+    if (!pinCode) {
+      setError('الرجاء إدخال رمز PIN')
       return
     }
 
     try {
       setIsSigningIn(true)
-      await signIn(email, pinCode)
+      await signIn(pinCode)
     } catch (error: any) {
       setError(error.message || 'حدث خطأ أثناء تسجيل الدخول. يرجى المحاولة مرة أخرى.')
     } finally {
@@ -52,25 +51,6 @@ export function LoginForm() {
               {error}
             </div>
           )}
-
-          <div className="space-y-2">
-            <Label htmlFor="email" className="text-gray-700">
-              البريد الإلكتروني
-            </Label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <Input
-                id="email"
-                type="email"
-                placeholder="example@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="pl-10"
-                required
-                disabled={loading || isSigningIn}
-              />
-            </div>
-          </div>
 
           <div className="space-y-2">
             <Label htmlFor="pinCode" className="text-gray-700">

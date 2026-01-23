@@ -92,24 +92,29 @@ export const userService = {
     }
   },
 
-  // Verify PIN code
-  verifyPinCode: async (email: string, pinCode: string): Promise<User | null> => {
+  // Verify PIN code (search all users and find matching PIN)
+  verifyPinCode: async (pinCode: string): Promise<User | null> => {
     checkPrisma()
-    const user = await prisma.user.findUnique({ where: { email } })
-    if (!user) return null
-
-    const isValid = await verifyPinCode(pinCode, user.password)
-    if (!isValid) return null
-
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      pinCode: user.password,
-      role: user.role as 'admin' | 'user' | 'manager',
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
+    // Get all users
+    const users = await prisma.user.findMany()
+    
+    // Try to find user with matching PIN code
+    for (const user of users) {
+      const isValid = await verifyPinCode(pinCode, user.password)
+      if (isValid) {
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          pinCode: user.password,
+          role: user.role as 'admin' | 'user' | 'manager',
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+        }
+      }
     }
+    
+    return null
   },
 
   // Create user
