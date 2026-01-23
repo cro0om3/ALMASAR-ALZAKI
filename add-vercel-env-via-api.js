@@ -5,6 +5,7 @@
 // 1. Vercel API Token (get it from: https://vercel.com/account/tokens)
 // 2. Project ID: prj_vYVJ3thAnk1Z78QK6vmrKfD2rY7k
 
+require('dotenv').config({ path: '.env.local' });
 const https = require('https');
 
 // ============================================

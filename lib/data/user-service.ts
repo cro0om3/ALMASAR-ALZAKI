@@ -97,8 +97,21 @@ export const userService = {
     try {
       checkPrisma()
       
-      // Get all users
-      const users = await prisma.user.findMany()
+      // Test connection first with timeout
+      await Promise.race([
+        prisma.$connect(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Connection timeout after 10 seconds')), 10000)
+        )
+      ])
+      
+      // Get all users with timeout
+      const users = await Promise.race([
+        prisma.user.findMany(),
+        new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Query timeout after 10 seconds')), 10000)
+        )
+      ])
       
       if (users.length === 0) {
         return null
@@ -132,6 +145,13 @@ export const userService = {
       return null
     } catch (error: any) {
       console.error('Error verifying PIN code:', error)
+      
+      // More specific error messages
+      if (error.message?.includes('Can\'t reach database server') || 
+          error.message?.includes('Connection timeout')) {
+        throw new Error(`Database connection failed. Please check DATABASE_URL in Vercel Environment Variables. Error: ${error.message}`)
+      }
+      
       throw new Error(`Failed to verify PIN code: ${error.message}`)
     }
   },

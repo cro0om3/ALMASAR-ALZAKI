@@ -28,12 +28,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(safeUser)
   } catch (error: any) {
     console.error('Login error:', error)
-    // Return more specific error message
-    const errorMessage = error.message || 'Failed to authenticate'
+    
+    // More specific error messages
+    let errorMessage = error.message || 'Failed to authenticate'
+    let errorDetails = undefined
+    
+    if (errorMessage.includes('Can\'t reach database server') || 
+        errorMessage.includes('Connection timeout') ||
+        errorMessage.includes('DATABASE_URL')) {
+      errorMessage = 'Database connection failed. Please check environment variables.'
+      errorDetails = process.env.NODE_ENV === 'development' ? error.message : 'Check DATABASE_URL in Vercel Settings'
+    }
+    
     return NextResponse.json(
       { 
-        error: 'Failed to authenticate', 
-        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined 
+        error: errorMessage,
+        details: process.env.NODE_ENV === 'development' ? errorDetails || error.message : errorDetails
       },
       { status: 500 }
     )
