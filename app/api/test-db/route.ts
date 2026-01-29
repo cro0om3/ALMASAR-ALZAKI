@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+// Prevent Next from running this route at build time (needs DATABASE_URL at runtime only).
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   try {
     // Check if DATABASE_URL is set

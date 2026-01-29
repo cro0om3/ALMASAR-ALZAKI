@@ -11,14 +11,14 @@ const globalForPrisma = globalThis as unknown as {
   prisma: any | undefined
 }
 
-// Create Prisma Client with connection pool settings
-export const prisma = PrismaClient 
+// Create Prisma Client only when DATABASE_URL is set (required by Prisma: { url: "CONNECTION_STRING" })
+// At Vercel build time DATABASE_URL may be missing — avoid instantiating so build succeeds.
+const connectionString = process.env.DATABASE_URL
+export const prisma = PrismaClient && connectionString
   ? (globalForPrisma.prisma ?? new PrismaClient({
       log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
       datasources: {
-        db: {
-          url: process.env.DATABASE_URL,
-        },
+        db: { url: connectionString },
       },
     }))
   : null
