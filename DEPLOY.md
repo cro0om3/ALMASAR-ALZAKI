@@ -22,9 +22,9 @@ git push -u origin main
 
 1. ادخل إلى [vercel.com](https://vercel.com) وسجّل الدخول.
 2. **Add New Project** → **Import Git Repository**.
-3. اختر المستودع الذي رفعته (مثلاً `cro0om3/ALMASAR-ALZAKI`).
+3. اختر المستودع: **cro0om3/ALMASAR-ALZAKI**.
 4. اترك الإعدادات الافتراضية (Framework: Next.js يكتشف تلقائياً).
-5. **Deploy** — قد يفشل البناء أول مرة بسبب متغيرات البيئة؛ هذا متوقّع.
+5. **قبل الضغط على Deploy:** اضغط **Environment Variables** وأضف المتغيرات الأربعة (انظر القسم التالي)، ثم **Deploy**.
 
 ---
 
