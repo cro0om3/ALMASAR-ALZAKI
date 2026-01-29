@@ -14,14 +14,11 @@ const fs = require('fs')
 const path = require('path')
 
 const ENV_FILE = path.join(__dirname, '..', '.env.vercel')
+const ENV_FOR_VERCEL = path.join(__dirname, '..', 'env-for-vercel.txt')
 const API_BASE = 'https://api.vercel.com'
 
 function loadEnvFile(filePath) {
-  if (!fs.existsSync(filePath)) {
-    console.error('ملف غير موجود:', filePath)
-    console.error('انسخ .env.vercel.example إلى .env.vercel وعبّئ القيم (بما فيها VERCEL_TOKEN).')
-    process.exit(1)
-  }
+  if (!fs.existsSync(filePath)) return {}
   const content = fs.readFileSync(filePath, 'utf8')
   const env = {}
   for (const line of content.split('\n')) {
@@ -37,6 +34,12 @@ function loadEnvFile(filePath) {
     env[key] = value
   }
   return env
+}
+
+function mergeEnv(target, source) {
+  for (const k of Object.keys(source)) {
+    if (source[k] != null && source[k] !== '') target[k] = source[k]
+  }
 }
 
 function isSensitiveKey(key) {
@@ -73,15 +76,20 @@ async function addEnvVar(projectIdOrName, token, teamId, envKey, value, type = '
 }
 
 async function main() {
-  const env = loadEnvFile(ENV_FILE)
+  const env = {}
+  mergeEnv(env, loadEnvFile(ENV_FOR_VERCEL))
+  mergeEnv(env, loadEnvFile(ENV_FILE))
+  if (process.env.VERCEL_TOKEN) env.VERCEL_TOKEN = process.env.VERCEL_TOKEN
+  if (process.env.VERCEL_PROJECT_NAME) env.VERCEL_PROJECT_NAME = process.env.VERCEL_PROJECT_NAME
+  if (process.env.VERCEL_TEAM_ID) env.VERCEL_TEAM_ID = process.env.VERCEL_TEAM_ID
 
-  const token = env.VERCEL_TOKEN || process.env.VERCEL_TOKEN
-  const projectName = env.VERCEL_PROJECT_NAME || process.env.VERCEL_PROJECT_NAME || 'uncle-website-system'
-  const teamId = env.VERCEL_TEAM_ID || process.env.VERCEL_TEAM_ID || null
+  const token = env.VERCEL_TOKEN
+  const projectName = env.VERCEL_PROJECT_NAME || 'uncle-website-system'
+  const teamId = env.VERCEL_TEAM_ID || null
 
   if (!token) {
     console.error('مطلوب: VERCEL_TOKEN في .env.vercel أو في بيئة التشغيل.')
-    console.error('لا تشارك التوكن في المحادثة — ضعه فقط في .env.vercel (الملف غير مرفوع على Git).')
+    console.error('انسخ .env.vercel.example إلى .env.vercel وضع VERCEL_TOKEN من Vercel → Settings → Tokens.')
     process.exit(1)
   }
 
@@ -89,7 +97,7 @@ async function main() {
   const keysToAdd = Object.keys(env).filter((k) => env[k] && !skipKeys.has(k))
 
   if (keysToAdd.length === 0) {
-    console.log('لا توجد متغيرات لإضافتها (عدا VERCEL_*). عبّئ NEXT_PUBLIC_SUPABASE_URL وغيرها في .env.vercel')
+    console.log('لا توجد متغيرات لإضافتها. تأكد من وجود env-for-vercel.txt أو المتغيرات في .env.vercel')
     process.exit(0)
   }
 

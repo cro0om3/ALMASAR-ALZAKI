@@ -2,6 +2,9 @@
   "name": "uncle-website-system",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -15,8 +18,7 @@
     "test:logos": "node scripts/test-logo-upload.js",
     "db:test:online": "node scripts/test-online.js",
     "db:seed": "node scripts/test-and-seed-database.js",
-    "db:create-admin": "node scripts/create-admin-user.js",
-    "postinstall": "prisma generate",
+    "db:create-admin": "node scripts/create-admin-user-supabase.js",
     "vercel-build": "prisma generate && next build",
     "setup:mcp": "node scripts/setup-mcp-servers.js",
     "setup:deploy": "node scripts/setup-complete-deployment.js",

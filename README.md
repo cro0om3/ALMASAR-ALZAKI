@@ -284,10 +284,9 @@ NEXT_PUBLIC_APP_URL="https://yourdomain.com"
 
 ## الملفات المهمة
 
-- `DEPLOYMENT_TEMPLATE.json` - Template للرفع (استخدمه لكل مشروع)
-- `QUICK_START_DEPLOYMENT.txt` - دليل سريع للرفع
-- `supabase-schema.sql` - Database Schema SQL
-- `supabase-functions.sql` - Database Functions
+- **`DEPLOY.md`** — دليل الرفع على GitHub والنشر على Vercel (خطوة بخطوة)
+- `supabase-schema.sql` — Database Schema SQL
+- `supabase-functions.sql` — Database Functions
 
 ## التكلفة المتوقعة
 
@@ -299,8 +298,8 @@ NEXT_PUBLIC_APP_URL="https://yourdomain.com"
 ## الدعم
 
 للمزيد من المعلومات:
-- راجع `QUICK_START_DEPLOYMENT.txt` للرفع السريع
-- راجع `DEPLOYMENT_TEMPLATE.json` للخطوات التفصيلية
+- **رفع على GitHub والنشر على Vercel:** راجع `DEPLOY.md`
+- **الربط التقني ومتغيرات البيئة:** راجع `docs/VERCEL_DEPLOYMENT_AND_LINKING.md`
 
 ---
 

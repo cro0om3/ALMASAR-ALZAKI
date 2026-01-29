@@ -1,5 +1,5 @@
 {
+  "installCommand": "npm install --ignore-scripts",
   "buildCommand": "npm run vercel-build",
-  "framework": "nextjs",
-  "regions": ["dub1"]
+  "framework": "nextjs"
 }
