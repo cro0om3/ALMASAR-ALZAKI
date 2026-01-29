@@ -57,7 +57,7 @@ export function ToastNotification({
     info: {
       icon: Info,
       bg: "bg-blue-50 dark:bg-blue-900/30",
-      border: "border-blue-200 dark:border-blue-800",
+      border: "border-blue-400 dark:border-blue-800",
       iconColor: "text-blue-600 dark:text-blue-400",
       titleColor: "text-blue-900 dark:text-blue-100",
     },

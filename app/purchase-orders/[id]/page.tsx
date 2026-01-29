@@ -13,9 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Edit, ArrowLeft, Download, Receipt } from "lucide-react"
-import { purchaseOrderService } from "@/lib/data"
-import { vendorService, customerService, invoiceService, quotationService } from "@/lib/data"
+import Link from "next/link"
+import { Edit, Receipt } from "lucide-react"
 import { PurchaseOrder } from "@/types"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { DocumentTimeline } from "@/components/shared/DocumentTimeline"
@@ -31,25 +30,57 @@ export default function PurchaseOrderDetailPage() {
   const [order, setOrder] = useState<PurchaseOrder | null>(null)
   const [relatedInvoice, setRelatedInvoice] = useState<any>(null)
   const [quotation, setQuotation] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const id = params.id as string
-    const po = purchaseOrderService.getById(id)
-    if (po) {
-      const vendor = po.vendorId ? vendorService.getById(po.vendorId) : undefined
-      const customer = po.customerId ? customerService.getById(po.customerId) : undefined
-      const q = po.quotationId ? quotationService.getById(po.quotationId) : undefined
-      
-      // Find related invoice by purchaseOrderId
-      const allInvoices = invoiceService.getAll()
-      const invoice = allInvoices.find(inv => inv.purchaseOrderId === id)
-      
-      setQuotation(q)
-      setRelatedInvoice(invoice)
-      setOrder({ ...po, vendor, customer })
+    if (!id) {
+      setLoading(false)
+      return
     }
+    let cancelled = false
+    setLoading(true)
+    const load = async () => {
+      try {
+        const [poRes, vendorsRes, customersRes, quotationsRes, invoicesRes] = await Promise.all([
+          fetch(`/api/purchase-orders/${id}`),
+          fetch('/api/vendors'),
+          fetch('/api/customers'),
+          fetch('/api/quotations'),
+          fetch('/api/invoices'),
+        ])
+        if (cancelled) return
+        const po = poRes.ok ? await poRes.json() : null
+        const vendors = vendorsRes.ok ? await vendorsRes.json() : []
+        const customers = customersRes.ok ? await customersRes.json() : []
+        const quotations = quotationsRes.ok ? await quotationsRes.json() : []
+        const invoices = invoicesRes.ok ? await invoicesRes.json() : []
+        if (po) {
+          const vendor = (vendors || []).find((v: any) => v.id === po.vendorId)
+          const customer = (customers || []).find((c: any) => c.id === po.customerId)
+          const q = (quotations || []).find((q: any) => q.id === po.quotationId)
+          const invoice = (invoices || []).find((inv: any) => inv.purchaseOrderId === id)
+          if (!cancelled) {
+            setQuotation(q)
+            setRelatedInvoice(invoice)
+            setOrder({ ...po, vendor, customer })
+          }
+        } else if (!cancelled) setOrder(null)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
   }, [params.id])
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    )
+  }
   if (!order) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -95,7 +126,6 @@ export default function PurchaseOrderDetailPage() {
         description: item.description,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
-        discount: item.discount,
         tax: item.tax,
         total: item.total,
       })),
@@ -118,9 +148,9 @@ export default function PurchaseOrderDetailPage() {
       <PageHeader
         title={`Purchase Order ${order.orderNumber}`}
         description="View purchase order details"
-        actionLabel={canEdit('purchase_orders') ? "Edit" : undefined}
-        actionHref={canEdit('purchase_orders') ? `/purchase-orders/${order.id}/edit` : undefined}
-        actionIcon={canEdit('purchase_orders') ? <Edit className="mr-2 h-4 w-4" /> : undefined}
+        secondaryActionLabel={!relatedInvoice ? "Create Invoice" : undefined}
+        secondaryActionHref={!relatedInvoice ? `/invoices/new?fromPO=${order.id}` : undefined}
+        secondaryActionIcon={!relatedInvoice ? <Receipt className="mr-2 h-4 w-4" /> : undefined}
       />
 
       {/* Document Timeline */}
@@ -149,27 +179,11 @@ export default function PurchaseOrderDetailPage() {
           }
         }}
         currentDocumentType="purchase_order"
+        hideNextStepButton
       />
 
-      {/* Action Buttons */}
-      <div className="flex gap-3 flex-wrap">
-        <Button 
-          variant="gold"
-          onClick={() => router.push(`/invoices/new?fromPO=${order.id}`)}
-          className="bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-blue-900 hover:from-yellow-500 hover:via-yellow-600 hover:to-yellow-700 shadow-gold hover:shadow-xl font-bold border-2 border-yellow-300/50 px-6 py-3"
-        >
-          <Receipt className="mr-2 h-5 w-5" />
-          Create Invoice
-        </Button>
-        <ExportButton
-          data={getExportData()}
-          filename={`PurchaseOrder-${order.orderNumber}`}
-          variant="outline"
-        />
-      </div>
-
       <div className="grid gap-6 md:grid-cols-2">
-        <Card className="border-2 border-blue-200/60">
+        <Card className="border-2 border-blue-400 dark:border-blue-800/60">
           <CardHeader>
             <div className="flex items-center gap-3">
               <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-blue-800 rounded-full"></div>
@@ -238,7 +252,7 @@ export default function PurchaseOrderDetailPage() {
         </Card>
       </div>
 
-      <Card className="border-2 border-blue-200/60">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60">
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-blue-800 rounded-full"></div>
@@ -248,13 +262,12 @@ export default function PurchaseOrderDetailPage() {
         <CardContent>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Description</TableHead>
-                <TableHead>Quantity</TableHead>
-                <TableHead>Unit Price</TableHead>
-                <TableHead>Discount</TableHead>
-                <TableHead>Tax</TableHead>
-                <TableHead className="text-right">Total</TableHead>
+              <TableRow className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 dark:from-blue-900 dark:via-blue-800 dark:to-blue-900 border-b-0">
+                <TableHead className="font-bold text-white">Description</TableHead>
+                <TableHead className="font-bold text-white">Quantity</TableHead>
+                <TableHead className="font-bold text-white">Unit Price</TableHead>
+                <TableHead className="font-bold text-white">Tax</TableHead>
+                <TableHead className="text-right font-bold text-white">Total</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -263,7 +276,6 @@ export default function PurchaseOrderDetailPage() {
                   <TableCell>{item.description}</TableCell>
                   <TableCell>{item.quantity}</TableCell>
                   <TableCell>{formatCurrency(item.unitPrice)}</TableCell>
-                  <TableCell>{item.discount}%</TableCell>
                   <TableCell>{item.tax}%</TableCell>
                   <TableCell className="text-right">{formatCurrency(item.total)}</TableCell>
                 </TableRow>
@@ -292,7 +304,7 @@ export default function PurchaseOrderDetailPage() {
       {(order.terms || order.notes) && (
         <div className="grid gap-6 md:grid-cols-2">
           {order.terms && (
-            <Card className="border-2 border-blue-200/60">
+            <Card className="border-2 border-blue-400 dark:border-blue-800/60">
               <CardHeader className="pb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-blue-800 rounded-full"></div>
@@ -319,6 +331,27 @@ export default function PurchaseOrderDetailPage() {
           )}
         </div>
       )}
+
+      {/* Action Buttons - Edit and Export at bottom (same as Quotation page) */}
+      <div className="flex gap-4 justify-end flex-wrap">
+        {canEdit('purchase_orders') && (
+          <Link href={`/purchase-orders/${order.id}/edit`}>
+            <Button
+              variant="outline"
+              size="lg"
+              className="border-2 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900 hover:border-blue-500 dark:hover:border-blue-600 font-semibold px-6 py-3"
+            >
+              <Edit className="mr-2 h-4 w-4" />
+              Edit
+            </Button>
+          </Link>
+        )}
+        <ExportButton
+          data={getExportData()}
+          filename={`PurchaseOrder-${order.orderNumber}`}
+          variant="outline"
+        />
+      </div>
     </div>
   )
 }

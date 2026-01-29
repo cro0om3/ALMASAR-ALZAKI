@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, Lock } from 'lucide-react'
+import Image from 'next/image'
 
 export function LoginForm() {
   const { signIn, loading } = useAuth()
@@ -37,6 +38,16 @@ export function LoginForm() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <Card className="w-full max-w-md p-8 shadow-xl">
         <div className="text-center mb-8">
+          <div className="flex justify-center mb-4">
+            <Image 
+              src="/logo.png" 
+              alt="ALMSAR ALZAKI Logo" 
+              width={320} 
+              height={133}
+              className="h-36 w-auto object-contain drop-shadow-xl"
+              priority
+            />
+          </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             نظام المحاسبة
           </h1>
@@ -65,7 +76,6 @@ export function LoginForm() {
                 value={pinCode}
                 onChange={(e) => setPinCode(e.target.value)}
                 className="pl-10"
-                required
                 disabled={loading || isSigningIn}
                 maxLength={10}
               />

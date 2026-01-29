@@ -62,7 +62,7 @@ export function AdvancedSearch({
         variant="outline"
         size="sm"
         onClick={() => setIsOpen(true)}
-        className="border-2 border-blue-200/60 dark:border-blue-800/60"
+        className="border-2 border-blue-400 dark:border-blue-800/60"
       >
         <Filter className="mr-2 h-4 w-4" />
         Advanced Search
@@ -71,7 +71,7 @@ export function AdvancedSearch({
   }
 
   return (
-    <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card">
+    <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2">
@@ -90,7 +90,7 @@ export function AdvancedSearch({
       <CardContent className="space-y-4">
         {filters.length === 0 && (
           <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
-            No filters added. Click "Add Filter" to start.
+            No filters added. Click &quot;Add Filter&quot; to start.
           </p>
         )}
 

@@ -68,7 +68,7 @@ export function NotificationCenter({
       case 'error':
         return 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/20'
       default:
-        return 'border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/20'
+        return 'border-blue-400 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/20'
     }
   }
 
@@ -111,7 +111,7 @@ export function NotificationCenter({
           />
           
           {/* Notification Panel */}
-          <Card className="absolute right-0 top-12 w-96 max-h-[600px] z-50 border-2 border-blue-200/60 dark:border-blue-800/60 shadow-2xl">
+          <Card className="absolute right-0 top-12 w-96 max-h-[600px] z-50 border-2 border-blue-400 dark:border-blue-800/60 shadow-2xl">
             <CardHeader className="pb-3 border-b border-gray-200 dark:border-gray-800">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2">

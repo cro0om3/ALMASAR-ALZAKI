@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { dbVendorService } from '@/lib/data/db-service'
+import { createServerClient } from '@/lib/supabase-server'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const vendor = await dbVendorService.getById(params.id)
-    if (!vendor) {
+    const supabase = createServerClient()
+    const { data: vendor, error } = await supabase
+      .from('vendors')
+      .select('*')
+      .eq('id', params.id)
+      .single()
+
+    if (error || !vendor) {
       return NextResponse.json(
         { error: 'Vendor not found' },
         { status: 404 }
@@ -28,7 +34,21 @@ export async function PUT(
 ) {
   try {
     const body = await request.json()
-    const vendor = await dbVendorService.update(params.id, body)
+    const supabase = createServerClient()
+    
+    const { data: vendor, error } = await supabase
+      .from('vendors')
+      .update({ ...body, updatedAt: new Date().toISOString() })
+      .eq('id', params.id)
+      .select()
+      .single()
+
+    if (error) {
+      return NextResponse.json(
+        { error: 'Failed to update vendor', details: error.message },
+        { status: 500 }
+      )
+    }
     return NextResponse.json(vendor)
   } catch (error: any) {
     return NextResponse.json(
@@ -43,7 +63,18 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await dbVendorService.delete(params.id)
+    const supabase = createServerClient()
+    const { error } = await supabase
+      .from('vendors')
+      .delete()
+      .eq('id', params.id)
+
+    if (error) {
+      return NextResponse.json(
+        { error: 'Failed to delete vendor', details: error.message },
+        { status: 500 }
+      )
+    }
     return NextResponse.json({ success: true })
   } catch (error: any) {
     return NextResponse.json(

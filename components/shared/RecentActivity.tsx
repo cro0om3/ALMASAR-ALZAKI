@@ -89,7 +89,7 @@ export function RecentActivity({
 
   if (activities.length === 0) {
     return (
-      <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card">
         <CardHeader>
           <CardTitle className="text-xl font-bold text-blue-900 dark:text-blue-100">
             Recent Activity
@@ -106,7 +106,7 @@ export function RecentActivity({
   }
 
   return (
-    <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
+    <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
       <CardHeader>
         <CardTitle className="text-xl font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2">
           <Clock className="h-5 w-5 text-gold dark:text-yellow-400" />

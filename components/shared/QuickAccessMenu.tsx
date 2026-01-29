@@ -45,7 +45,7 @@ export function QuickAccessMenu() {
         <Button
           variant="outline"
           size="sm"
-          className="border-2 border-blue-200/60 dark:border-blue-800/60 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900"
+          className="border-2 border-blue-400 dark:border-blue-800/60 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900"
         >
           <Plus className="mr-2 h-4 w-4" />
           Quick Access

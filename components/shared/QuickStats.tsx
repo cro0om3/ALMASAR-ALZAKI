@@ -58,7 +58,7 @@ export function QuickStats({
 
   const colorClasses = {
     blue: {
-      border: 'border-blue-200 dark:border-blue-800',
+      border: 'border-blue-400 dark:border-blue-800',
       bg: 'bg-blue-50 dark:bg-blue-900/20',
       text: 'text-blue-700 dark:text-blue-300',
       iconBg: 'bg-blue-500',

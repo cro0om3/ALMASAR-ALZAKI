@@ -6,7 +6,6 @@ import { FileText, Receipt, ShoppingCart, Users, Building2, Truck, UserCircle, C
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { quotationService, invoiceService, purchaseOrderService, customerService, vendorService, employeeService, payslipService } from "@/lib/data"
 import { Quotation, Invoice, Customer, Vendor, Employee } from "@/types"
 import { formatCurrency, formatDate, getResidenceStatus, calculateDaysRemaining } from "@/lib/utils"
 import { SearchBar } from "@/components/shared/SearchBar"
@@ -45,164 +44,111 @@ export default function Dashboard() {
     revenue: number
     count: number
   }>>([])
+  const [customers, setCustomersState] = useState<Customer[]>([])
 
   useEffect(() => {
-    const loadData = () => {
+    const loadData = async () => {
       try {
         setIsLoading(true)
-      // Load counts
-      const quotations = quotationService.getAll()
-      const invoices = invoiceService.getAll()
-      const purchaseOrders = purchaseOrderService.getAll()
-      const customers = customerService.getAll()
-      
-      setStats({
-        quotations: quotations.length,
-        invoices: invoices.length,
-        purchaseOrders: purchaseOrders.length,
-        customers: customers.length,
-      })
+        const [qRes, invRes, poRes, cRes, vRes, eRes, psRes] = await Promise.all([
+          fetch('/api/quotations'),
+          fetch('/api/invoices'),
+          fetch('/api/purchase-orders'),
+          fetch('/api/customers'),
+          fetch('/api/vendors'),
+          fetch('/api/employees'),
+          fetch('/api/payslips'),
+        ])
+        const quotations = qRes.ok ? await qRes.json() : []
+        const invoices = invRes.ok ? await invRes.json() : []
+        const purchaseOrders = poRes.ok ? await poRes.json() : []
+        const customersData = cRes.ok ? await cRes.json() : []
+        const customers = customersData || []
+        setCustomersState(customers)
+        const vendors = vRes.ok ? await vRes.json() : []
+        const employees = eRes.ok ? await eRes.json() : []
+        const payslips = psRes.ok ? await psRes.json() : []
 
-      // Load recent quotations (last 5)
-      const recent = quotations
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, 5)
-      setRecentQuotations(recent)
-
-      // Load recent invoices (last 5)
-      const recentInvs = invoices
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, 5)
-      setRecentInvoices(recentInvs)
-
-      // Calculate financial stats
-      const totalRevenue = invoices
-        .filter((inv) => inv.status === 'paid')
-        .reduce((sum, inv) => sum + inv.total, 0)
-
-      const pendingPayments = invoices
-        .filter((inv) => inv.status === 'sent' || inv.status === 'overdue')
-        .reduce((sum, inv) => sum + (inv.total - (inv.paidAmount || 0)), 0)
-
-      const unpaidPayslips = payslipService.getAll()
-        .filter((p) => p.status !== 'paid')
-        .reduce((sum, p) => sum + p.netPay, 0)
-
-      setFinancialStats({
-        totalRevenue,
-        pendingPayments,
-        unpaidPayslips,
-      })
-
-      // Load expiring residences
-      const expiring: Array<{
-        id: string
-        name: string
-        type: 'customer' | 'vendor' | 'employee'
-        expiryDate: string
-        status: 'expired' | 'critical' | 'warning'
-        link: string
-      }> = []
-
-      // Check customers
-      customers.forEach((customer) => {
-        if (customer.residenceExpiryDate) {
-          const status = getResidenceStatus(customer.residenceExpiryDate)
-          if (status === 'expired' || status === 'critical' || status === 'warning') {
-            expiring.push({
-              id: customer.id,
-              name: customer.name,
-              type: 'customer',
-              expiryDate: customer.residenceExpiryDate,
-              status,
-              link: `/customers/${customer.id}`,
-            })
-          }
-        }
-      })
-
-      // Check vendors
-      const vendors = vendorService.getAll()
-      vendors.forEach((vendor) => {
-        if (vendor.residenceExpiryDate) {
-          const status = getResidenceStatus(vendor.residenceExpiryDate)
-          if (status === 'expired' || status === 'critical' || status === 'warning') {
-            expiring.push({
-              id: vendor.id,
-              name: vendor.name,
-              type: 'vendor',
-              expiryDate: vendor.residenceExpiryDate,
-              status,
-              link: `/vendors/${vendor.id}`,
-            })
-          }
-        }
-      })
-
-      // Check employees
-      const employees = employeeService.getAll()
-      employees.forEach((employee) => {
-        if (employee.residenceExpiryDate) {
-          const status = getResidenceStatus(employee.residenceExpiryDate)
-          if (status === 'expired' || status === 'critical' || status === 'warning') {
-            expiring.push({
-              id: employee.id,
-              name: `${employee.firstName} ${employee.lastName}`,
-              type: 'employee',
-              expiryDate: employee.residenceExpiryDate,
-              status,
-              link: `/employees/${employee.id}`,
-            })
-          }
-        }
-      })
-
-      // Sort by expiry date (earliest first)
-      expiring.sort((a, b) => {
-        const daysA = calculateDaysRemaining(a.expiryDate)
-        const daysB = calculateDaysRemaining(b.expiryDate)
-        return daysA - daysB
-      })
-
-      setExpiringResidences(expiring.slice(0, 5))
-
-      // Calculate monthly revenue
-      const monthlyData: Record<string, { revenue: number; count: number }> = {}
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-      
-      invoices
-        .filter((inv) => inv.status === 'paid')
-        .forEach((inv) => {
-          const date = new Date(inv.date)
-          const monthKey = `${monthNames[date.getMonth()]} ${date.getFullYear()}`
-          
-          if (!monthlyData[monthKey]) {
-            monthlyData[monthKey] = { revenue: 0, count: 0 }
-          }
-          monthlyData[monthKey].revenue += inv.total
-          monthlyData[monthKey].count += 1
+        setStats({
+          quotations: (quotations || []).length,
+          invoices: (invoices || []).length,
+          purchaseOrders: (purchaseOrders || []).length,
+          customers: (customers || []).length,
         })
 
-      const monthlyArray = Object.entries(monthlyData)
-        .map(([month, data]) => ({ month, ...data }))
-        .sort((a, b) => {
-          const dateA = new Date(a.month)
-          const dateB = new Date(b.month)
-          return dateA.getTime() - dateB.getTime()
-        })
-        .slice(-12) // Last 12 months
+        const recent = (quotations || [])
+          .sort((a: Quotation, b: Quotation) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 5)
+        setRecentQuotations(recent)
 
-      setMonthlyRevenue(monthlyArray)
-      setIsLoading(false)
+        const recentInvs = (invoices || [])
+          .sort((a: Invoice, b: Invoice) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 5)
+        setRecentInvoices(recentInvs)
+
+        const totalRevenue = (invoices || [])
+          .filter((inv: Invoice) => inv.status === 'paid')
+          .reduce((sum: number, inv: Invoice) => sum + inv.total, 0)
+        const pendingPayments = (invoices || [])
+          .filter((inv: Invoice) => inv.status === 'sent' || inv.status === 'overdue')
+          .reduce((sum: number, inv: Invoice) => sum + (inv.total - (inv.paidAmount || 0)), 0)
+        const unpaidPayslips = (payslips || [])
+          .filter((p: { status: string }) => p.status !== 'paid')
+          .reduce((sum: number, p: { netPay: number }) => sum + p.netPay, 0)
+        setFinancialStats({ totalRevenue, pendingPayments, unpaidPayslips })
+
+        const expiring: Array<{ id: string; name: string; type: 'customer' | 'vendor' | 'employee'; expiryDate: string; status: 'expired' | 'critical' | 'warning'; link: string }> = []
+        ;(customers || []).forEach((customer: Customer) => {
+          if (customer.residenceExpiryDate) {
+            const status = getResidenceStatus(customer.residenceExpiryDate)
+            if (status === 'expired' || status === 'critical' || status === 'warning') {
+              expiring.push({ id: customer.id, name: customer.name, type: 'customer', expiryDate: customer.residenceExpiryDate, status, link: `/customers/${customer.id}` })
+            }
+          }
+        })
+        ;(vendors || []).forEach((vendor: Vendor) => {
+          if (vendor.residenceExpiryDate) {
+            const status = getResidenceStatus(vendor.residenceExpiryDate)
+            if (status === 'expired' || status === 'critical' || status === 'warning') {
+              expiring.push({ id: vendor.id, name: vendor.name, type: 'vendor', expiryDate: vendor.residenceExpiryDate, status, link: `/vendors/${vendor.id}` })
+            }
+          }
+        })
+        ;(employees || []).forEach((employee: Employee) => {
+          if (employee.residenceExpiryDate) {
+            const status = getResidenceStatus(employee.residenceExpiryDate)
+            if (status === 'expired' || status === 'critical' || status === 'warning') {
+              expiring.push({ id: employee.id, name: `${employee.firstName} ${employee.lastName}`, type: 'employee', expiryDate: employee.residenceExpiryDate, status, link: `/employees/${employee.id}` })
+            }
+          }
+        })
+        expiring.sort((a, b) => calculateDaysRemaining(a.expiryDate) - calculateDaysRemaining(b.expiryDate))
+        setExpiringResidences(expiring.slice(0, 5))
+
+        const monthlyData: Record<string, { revenue: number; count: number }> = {}
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        ;(invoices || [])
+          .filter((inv: Invoice) => inv.status === 'paid')
+          .forEach((inv: Invoice) => {
+            const date = new Date(inv.date)
+            const monthKey = `${monthNames[date.getMonth()]} ${date.getFullYear()}`
+            if (!monthlyData[monthKey]) monthlyData[monthKey] = { revenue: 0, count: 0 }
+            monthlyData[monthKey].revenue += inv.total
+            monthlyData[monthKey].count += 1
+          })
+        const monthlyArray = Object.entries(monthlyData)
+          .map(([month, data]) => ({ month, ...data }))
+          .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime())
+          .slice(-12)
+        setMonthlyRevenue(monthlyArray)
       } catch (error) {
         console.error("Error loading dashboard data:", error)
+      } finally {
         setIsLoading(false)
       }
     }
 
     loadData()
-    
-    // Reload data when window gains focus (for cross-tab updates)
     const handleFocus = () => loadData()
     window.addEventListener('focus', handleFocus)
     return () => window.removeEventListener('focus', handleFocus)
@@ -228,24 +174,26 @@ export default function Dashboard() {
       </div>
 
       {/* Luxury Header */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white p-8 md:p-10 rounded-2xl shadow-luxury">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-950/30 to-transparent"></div>
-        <div className="absolute top-0 right-0 w-64 h-64 bg-gold/10 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-0 left-0 w-48 h-48 bg-gold/20 rounded-full blur-2xl"></div>
+      <div className="relative overflow-hidden bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white p-8 md:p-10 rounded-2xl shadow-luxury hover:shadow-xl transition-all duration-500">
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-950/40 via-transparent to-blue-950/40"></div>
+        <div className="absolute top-0 right-0 w-72 h-72 bg-gold/15 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-0 left-0 w-56 h-56 bg-gold/20 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(212,175,55,0.1),transparent_70%)]"></div>
         <div className="relative z-10">
-          <h1 className="text-4xl md:text-5xl font-bold mb-3 tracking-tight">
+          <h1 className="text-4xl md:text-5xl font-bold mb-3 tracking-tight drop-shadow-lg">
             Dashboard
           </h1>
-          <p className="text-blue-100 text-lg md:text-xl font-medium">
-            Welcome to <span className="text-gold font-bold">ALMSAR ALZAKI T&M</span> CRM System
+          <p className="text-blue-100 text-lg md:text-xl font-medium drop-shadow-md">
+            Welcome to <span className="text-gold font-bold drop-shadow-lg">ALMSAR ALZAKI Transport & Maintenance</span> CRM System
           </p>
         </div>
       </div>
 
       {/* Financial Stats Cards */}
       <div className="grid gap-6 md:grid-cols-3">
-        <Card className="group relative overflow-hidden border-2 border-green-200/60 dark:border-green-800/60 hover:border-green-400 dark:hover:border-green-600 transition-all duration-500 cursor-pointer">
+        <Card className="group relative overflow-hidden border-2 border-green-200/60 dark:border-green-800/60 hover:border-green-400 dark:hover:border-green-600 transition-all duration-500 cursor-pointer hover:shadow-xl hover:-translate-y-1">
           <div className="absolute inset-0 bg-gradient-to-br from-green-50 via-white to-green-50/50 dark:from-green-900/20 dark:via-blue-900/30 dark:to-green-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+          <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 relative z-10">
             <CardTitle className="text-sm font-semibold text-blue-900 dark:text-blue-100">Total Revenue</CardTitle>
             <div className="p-3 bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg group-hover:scale-110 transition-transform duration-300">
@@ -258,8 +206,9 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="group relative overflow-hidden border-2 border-orange-200/60 dark:border-orange-800/60 hover:border-orange-400 dark:hover:border-orange-600 transition-all duration-500 cursor-pointer">
+        <Card className="group relative overflow-hidden border-2 border-orange-200/60 dark:border-orange-800/60 hover:border-orange-400 dark:hover:border-orange-600 transition-all duration-500 cursor-pointer hover:shadow-xl hover:-translate-y-1">
           <div className="absolute inset-0 bg-gradient-to-br from-orange-50 via-white to-orange-50/50 dark:from-orange-900/20 dark:via-blue-900/30 dark:to-orange-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+          <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 relative z-10">
             <CardTitle className="text-sm font-semibold text-blue-900 dark:text-blue-100">Pending Payments</CardTitle>
             <div className="p-3 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl shadow-lg group-hover:scale-110 transition-transform duration-300">
@@ -290,8 +239,9 @@ export default function Dashboard() {
       {/* Luxury Stats Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Link href="/quotations">
-          <Card className="group relative overflow-hidden border-2 border-blue-200/60 dark:border-blue-800/60 hover:border-blue-400 dark:hover:border-blue-600 transition-all duration-500 cursor-pointer">
+          <Card className="group relative overflow-hidden border-2 border-blue-400 dark:border-blue-800/60 dark:border-blue-800/60 hover:border-blue-400 dark:hover:border-blue-600 transition-all duration-500 cursor-pointer hover:shadow-xl hover:-translate-y-1">
             <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-white to-blue-50/50 dark:from-blue-900/20 dark:via-blue-900/30 dark:to-blue-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 relative z-10">
               <CardTitle className="text-sm font-semibold text-blue-900 dark:text-blue-100">Total Quotations</CardTitle>
               <div className="p-3 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-blue group-hover:scale-110 transition-transform duration-300">
@@ -365,7 +315,7 @@ export default function Dashboard() {
           <ActivityFeed />
         </div>
 
-        <Card className="border-2 border-blue-200/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
+        <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-card hover:-translate-y-1 backdrop-blur-sm">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3 mb-2">
               <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-blue-800 rounded-full"></div>
@@ -383,7 +333,7 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-3">
                 {recentQuotations.map((quotation) => {
-                  const customer = customerService.getById(quotation.customerId)
+                  const customer = customers.find((c) => c.id === quotation.customerId)
                   const getStatusBadgeVariant = (status: string) => {
                     switch (status) {
                       case "accepted": return "success"
@@ -395,7 +345,7 @@ export default function Dashboard() {
                   }
                   return (
                     <Link key={quotation.id} href={`/quotations/${quotation.id}`}>
-                      <div className="p-3 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/50 hover:border-blue-400 dark:hover:border-blue-600 transition-colors cursor-pointer">
+                      <div className="p-3 border border-blue-400 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/50 hover:border-blue-400 dark:hover:border-blue-600 transition-colors cursor-pointer">
                         <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-blue-900 dark:text-blue-100">{quotation.quotationNumber}</span>
@@ -423,7 +373,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-2 border-gold/60 dark:border-gold/40 shadow-gold hover:shadow-lg transition-all duration-300 bg-gradient-to-br from-gold/10 to-yellow-50 dark:from-gold/20 dark:to-blue-900/30">
+        <Card className="border-2 border-gold/60 dark:border-gold/40 shadow-gold hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-gold/10 to-yellow-50 dark:from-gold/20 dark:to-blue-900/30 hover:-translate-y-1 backdrop-blur-sm">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3 mb-2">
               <div className="w-1 h-8 bg-gradient-to-b from-yellow-500 to-yellow-600 rounded-full"></div>
@@ -441,7 +391,7 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-3">
                 {recentInvoices.map((invoice) => {
-                  const customer = customerService.getById(invoice.customerId)
+                  const customer = customers.find((c) => c.id === invoice.customerId)
                   const getStatusBadgeVariant = (status: string) => {
                     switch (status) {
                       case "paid": return "success"
@@ -481,7 +431,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-2 border-blue-200/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
+        <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-card hover:-translate-y-1 backdrop-blur-sm">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3 mb-2">
               <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-blue-800 rounded-full"></div>
@@ -571,7 +521,7 @@ export default function Dashboard() {
         </h2>
         <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-4">
           <Link href="/quotations/new">
-            <Card className="group cursor-pointer border-2 border-blue-200/60 dark:border-blue-800/60 hover:border-blue-500 dark:hover:border-blue-600 transition-all duration-300 hover:shadow-luxury shadow-card bg-gradient-card">
+            <Card className="group cursor-pointer border-2 border-blue-400 dark:border-blue-800/60 dark:border-blue-800/60 hover:border-blue-500 dark:hover:border-blue-600 transition-all duration-300 hover:shadow-luxury shadow-card bg-gradient-card">
               <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-900/20 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
               <CardHeader className="relative z-10">
                 <div className="flex items-center gap-3 mb-2">
@@ -601,7 +551,7 @@ export default function Dashboard() {
           </Link>
 
           <Link href="/customers/new">
-            <Card className="group cursor-pointer border-2 border-blue-200/60 dark:border-blue-800/60 hover:border-blue-500 dark:hover:border-blue-600 transition-all duration-300 hover:shadow-luxury shadow-card bg-gradient-card">
+            <Card className="group cursor-pointer border-2 border-blue-400 dark:border-blue-800/60 dark:border-blue-800/60 hover:border-blue-500 dark:hover:border-blue-600 transition-all duration-300 hover:shadow-luxury shadow-card bg-gradient-card">
               <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-900/20 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
               <CardHeader className="relative z-10">
                 <div className="flex items-center gap-3 mb-2">
@@ -616,7 +566,7 @@ export default function Dashboard() {
           </Link>
 
           <Link href="/projects/new">
-            <Card className="group cursor-pointer border-2 border-blue-200/60 dark:border-blue-800/60 hover:border-blue-500 dark:hover:border-blue-600 transition-all duration-300 hover:shadow-luxury shadow-card bg-gradient-card">
+            <Card className="group cursor-pointer border-2 border-blue-400 dark:border-blue-800/60 dark:border-blue-800/60 hover:border-blue-500 dark:hover:border-blue-600 transition-all duration-300 hover:shadow-luxury shadow-card bg-gradient-card">
               <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-900/20 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
               <CardHeader className="relative z-10">
                 <div className="flex items-center gap-3 mb-2">
@@ -646,7 +596,7 @@ export default function Dashboard() {
           </Link>
 
           <Link href="/receipts/new">
-            <Card className="group cursor-pointer border-2 border-blue-200/60 dark:border-blue-800/60 hover:border-blue-500 dark:hover:border-blue-600 transition-all duration-300 hover:shadow-luxury shadow-card bg-gradient-card">
+            <Card className="group cursor-pointer border-2 border-blue-400 dark:border-blue-800/60 dark:border-blue-800/60 hover:border-blue-500 dark:hover:border-blue-600 transition-all duration-300 hover:shadow-luxury shadow-card bg-gradient-card">
               <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-900/20 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
               <CardHeader className="relative z-10">
                 <div className="flex items-center gap-3 mb-2">
@@ -676,7 +626,7 @@ export default function Dashboard() {
           </Link>
 
           <Link href="/vehicles/new">
-            <Card className="group cursor-pointer border-2 border-blue-200/60 dark:border-blue-800/60 hover:border-blue-500 dark:hover:border-blue-600 transition-all duration-300 hover:shadow-luxury shadow-card bg-gradient-card">
+            <Card className="group cursor-pointer border-2 border-blue-400 dark:border-blue-800/60 dark:border-blue-800/60 hover:border-blue-500 dark:hover:border-blue-600 transition-all duration-300 hover:shadow-luxury shadow-card bg-gradient-card">
               <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-900/20 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
               <CardHeader className="relative z-10">
                 <div className="flex items-center gap-3 mb-2">
@@ -706,7 +656,7 @@ export default function Dashboard() {
           </Link>
 
           <Link href="/payslips/new">
-            <Card className="group cursor-pointer border-2 border-blue-200/60 dark:border-blue-800/60 hover:border-blue-500 dark:hover:border-blue-600 transition-all duration-300 hover:shadow-luxury shadow-card bg-gradient-card">
+            <Card className="group cursor-pointer border-2 border-blue-400 dark:border-blue-800/60 dark:border-blue-800/60 hover:border-blue-500 dark:hover:border-blue-600 transition-all duration-300 hover:shadow-luxury shadow-card bg-gradient-card">
               <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-900/20 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
               <CardHeader className="relative z-10">
                 <div className="flex items-center gap-3 mb-2">

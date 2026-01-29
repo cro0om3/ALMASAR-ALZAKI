@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Edit, ArrowLeft } from "lucide-react"
-import { vendorService } from "@/lib/data"
 import { Vendor } from "@/types"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 
@@ -14,12 +13,34 @@ export default function VendorDetailPage() {
   const router = useRouter()
   const { canEdit } = usePermissions()
   const [vendor, setVendor] = useState<Vendor | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const id = params.id as string
-    const v = vendorService.getById(id)
-    setVendor(v || null)
+    const loadVendor = async () => {
+      try {
+        setLoading(true)
+        const id = params.id as string
+        const response = await fetch(`/api/vendors/${id}`)
+        if (!response.ok) throw new Error('Failed to load vendor')
+        const data = await response.json()
+        setVendor(data)
+      } catch (error: any) {
+        console.error('Error loading vendor:', error)
+        setVendor(null)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadVendor()
   }, [params.id])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
 
   if (!vendor) {
     return (

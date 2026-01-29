@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -15,20 +16,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { vehicleService } from "@/lib/data"
 import { formatCurrency } from "@/lib/utils"
 
 const vehicleSchema = z.object({
-  make: z.string().min(1, "Make is required"),
-  model: z.string().min(1, "Model is required"),
-  year: z.number().min(1900).max(new Date().getFullYear() + 1),
-  licensePlate: z.string().min(1, "License plate is required"),
-  vin: z.string().min(1, "VIN is required"),
-  color: z.string().min(1, "Color is required"),
-  mileage: z.number().min(0),
-  purchaseDate: z.string().min(1, "Purchase date is required"),
-  purchasePrice: z.number().min(0),
-  status: z.enum(["active", "maintenance", "retired"]),
+  make: z.string().optional(),
+  model: z.string().optional(),
+  year: z.number().min(1900).max(new Date().getFullYear() + 1).optional(),
+  licensePlate: z.string().optional(),
+  vin: z.string().optional(),
+  color: z.string().optional(),
+  mileage: z.number().min(0).optional(),
+  purchaseDate: z.string().optional(),
+  purchasePrice: z.number().min(0).optional(),
+  status: z.enum(["active", "maintenance", "retired"]).optional(),
   notes: z.string().optional(),
 })
 
@@ -50,12 +50,23 @@ export default function NewVehiclePage() {
     },
   })
 
-  const onSubmit = (data: VehicleFormData) => {
-    vehicleService.create({
-      ...data,
-      notes: data.notes || "",
-    })
-    router.push("/vehicles")
+  const [saving, setSaving] = useState(false)
+  const onSubmit = async (data: VehicleFormData) => {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/vehicles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...data, notes: data.notes || "" }),
+      })
+      if (!res.ok) throw new Error('Failed to create vehicle')
+      router.push("/vehicles")
+    } catch (e) {
+      console.error(e)
+      alert('Failed to create vehicle.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -72,7 +83,7 @@ export default function NewVehiclePage() {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="make">Make *</Label>
+            <Label htmlFor="make">Make</Label>
             <Input id="make" {...register("make")} />
             {errors.make && (
               <p className="text-sm text-destructive">{errors.make.message}</p>
@@ -80,7 +91,7 @@ export default function NewVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="model">Model *</Label>
+            <Label htmlFor="model">Model</Label>
             <Input id="model" {...register("model")} />
             {errors.model && (
               <p className="text-sm text-destructive">{errors.model.message}</p>
@@ -88,7 +99,7 @@ export default function NewVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="year">Year *</Label>
+            <Label htmlFor="year">Year</Label>
             <Input
               id="year"
               type="number"
@@ -100,7 +111,7 @@ export default function NewVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="licensePlate">License Plate *</Label>
+            <Label htmlFor="licensePlate">License Plate</Label>
             <Input id="licensePlate" {...register("licensePlate")} />
             {errors.licensePlate && (
               <p className="text-sm text-destructive">{errors.licensePlate.message}</p>
@@ -108,7 +119,7 @@ export default function NewVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="vin">VIN *</Label>
+            <Label htmlFor="vin">VIN</Label>
             <Input id="vin" {...register("vin")} />
             {errors.vin && (
               <p className="text-sm text-destructive">{errors.vin.message}</p>
@@ -116,7 +127,7 @@ export default function NewVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="color">Color *</Label>
+            <Label htmlFor="color">Color</Label>
             <Input id="color" {...register("color")} />
             {errors.color && (
               <p className="text-sm text-destructive">{errors.color.message}</p>
@@ -124,7 +135,7 @@ export default function NewVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="mileage">Mileage *</Label>
+            <Label htmlFor="mileage">Mileage</Label>
             <Input
               id="mileage"
               type="number"
@@ -136,7 +147,7 @@ export default function NewVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="purchaseDate">Purchase Date *</Label>
+            <Label htmlFor="purchaseDate">Purchase Date</Label>
             <Input id="purchaseDate" type="date" {...register("purchaseDate")} />
             {errors.purchaseDate && (
               <p className="text-sm text-destructive">{errors.purchaseDate.message}</p>
@@ -144,7 +155,7 @@ export default function NewVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="purchasePrice">Purchase Price *</Label>
+            <Label htmlFor="purchasePrice">Purchase Price</Label>
             <Input
               id="purchasePrice"
               type="number"
@@ -157,7 +168,7 @@ export default function NewVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="status">Status *</Label>
+            <Label htmlFor="status">Status</Label>
             <Select
               value={watch("status")}
               onValueChange={(value) => setValue("status", value as any)}
@@ -190,10 +201,11 @@ export default function NewVehiclePage() {
           </Button>
           <Button 
             type="submit"
+            disabled={saving}
             variant="gold"
             className="bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-blue-900 hover:from-yellow-500 hover:via-yellow-600 hover:to-yellow-700 shadow-gold hover:shadow-xl font-bold border-2 border-yellow-300/50 px-8 py-3"
           >
-            Create Vehicle
+            {saving ? 'Creating...' : 'Create Vehicle'}
           </Button>
         </div>
       </form>

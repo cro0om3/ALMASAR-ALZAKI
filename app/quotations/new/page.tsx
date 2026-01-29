@@ -25,7 +25,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Plus, Trash2, Save, X, ShoppingCart } from "lucide-react"
-import { quotationService, customerService, settingsService } from "@/lib/data"
 import { QuotationItem, QuotationStatus } from "@/types"
 import { formatCurrency } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -37,23 +36,22 @@ import { AIAssistant } from "@/components/shared/AIAssistant"
 import { Modal } from "@/components/shared/Modal"
 
 const quotationSchema = z.object({
-  customerId: z.string().min(1, "Customer is required"),
-  date: z.string().min(1, "Date is required"),
-  validUntil: z.string().min(1, "Valid until date is required"),
-  billingType: z.enum(["hours", "days", "quantity"]),
+  customerId: z.string().optional(),
+  date: z.string().optional(),
+  validUntil: z.string().optional(),
+  billingType: z.enum(["hours", "days", "quantity"]).optional(),
   items: z.array(
     z.object({
-      description: z.string().min(1, "Description is required"),
+      description: z.string().optional(),
       quantity: z.number().min(0.01, "Quantity must be greater than 0").optional(),
-      unitPrice: z.number().min(0, "Unit price must be 0 or greater"),
-      discount: z.number().min(0).max(100),
-      tax: z.number().min(0).max(100),
+      unitPrice: z.number().min(0, "Unit price must be 0 or greater").optional(),
+      tax: z.number().min(0).max(100).optional(),
       hours: z.number().min(0).optional(),
       days: z.number().min(0).optional(),
     })
-  ).min(1, "At least one item is required"),
-  taxRate: z.number().min(0).max(100),
-  status: z.enum(["draft", "sent", "accepted", "rejected", "expired"]),
+  ).optional(),
+  taxRate: z.number().min(0).max(100).optional(),
+  status: z.enum(["draft", "sent", "accepted", "rejected", "expired"]).optional(),
   terms: z.string().optional(),
   notes: z.string().optional(),
 })
@@ -66,9 +64,6 @@ function QuotationFormContent() {
   const { toast } = useToast()
   const { canEdit } = usePermissions()
   const [customers, setCustomers] = useState<any[]>([])
-  const [subtotal, setSubtotal] = useState(0)
-  const [taxAmount, setTaxAmount] = useState(0)
-  const [total, setTotal] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showAIAssistant, setShowAIAssistant] = useState(false)
   const [aiMode, setAiMode] = useState<'product-description' | 'quotation-terms'>('product-description')
@@ -89,10 +84,10 @@ function QuotationFormContent() {
       date: new Date().toISOString().split("T")[0],
       validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
       billingType: "quantity",
-      items: [{ description: "", quantity: 1, unitPrice: 0, discount: 0, tax: 0 }],
-      taxRate: settingsService.get().defaultVATRate || 5,
+      items: [{ description: "", quantity: 1, unitPrice: 0, tax: 0 }],
+      taxRate: 5,
       status: "draft",
-      terms: settingsService.get().quotationTerms || "",
+      terms: "",
       notes: "",
     },
   })
@@ -103,39 +98,38 @@ function QuotationFormContent() {
   })
 
   useEffect(() => {
-    setCustomers(customerService.getAll())
+    fetch('/api/customers')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setCustomers(data || []))
+      .catch(() => setCustomers([]))
   }, [])
 
   const watchedItems = watch("items")
   const watchedTaxRate = watch("taxRate")
   const watchedBillingType = watch("billingType")
 
-  useEffect(() => {
+  // Compute subtotal, VAT, total from form values so they update immediately when unit price / quantity change
+  const { subtotal, taxAmount, total } = (() => {
+    const billingType = watchedBillingType || 'quantity'
     let sub = 0
-    watchedItems.forEach((item) => {
-      const billingType = watchedBillingType || 'quantity'
+    ;(watchedItems || []).forEach((item) => {
+      const unitPrice = Number(item?.unitPrice) || 0
+      const qty = Number(item?.quantity) || 0
+      const hours = Number(item?.hours) || 0
+      const days = Number(item?.days) || 0
       let itemTotal = 0
-      
-      if (billingType === 'hours' && item.hours) {
-        itemTotal = item.hours * item.unitPrice
-      } else if (billingType === 'days' && item.days) {
-        itemTotal = item.days * item.unitPrice
-      } else if (billingType === 'quantity' && item.quantity) {
-        itemTotal = item.quantity * item.unitPrice
-      }
-      
-      const discountAmount = (itemTotal * item.discount) / 100
-      const afterDiscount = itemTotal - discountAmount
-      sub += afterDiscount
+      if (billingType === 'hours') itemTotal = hours * unitPrice
+      else if (billingType === 'days') itemTotal = days * unitPrice
+      else itemTotal = qty * unitPrice
+      sub += itemTotal
     })
-    setSubtotal(sub)
-    const tax = (sub * watchedTaxRate) / 100
-    setTaxAmount(tax)
-    setTotal(sub + tax)
-  }, [watchedItems, watchedTaxRate, watchedBillingType])
+    const taxRate = Number(watchedTaxRate) || 0
+    const tax = (sub * taxRate) / 100
+    return { subtotal: sub, taxAmount: tax, total: sub + tax }
+  })()
 
   const addItem = () => {
-    append({ description: "", quantity: 1, unitPrice: 0, discount: 0, tax: 0 })
+    append({ description: "", quantity: 1, unitPrice: 0, tax: 0 })
   }
 
   const calculateItemTotal = (item: any, index: number) => {
@@ -150,11 +144,9 @@ function QuotationFormContent() {
       itemTotal = item.quantity * item.unitPrice
     }
     
-    const discountAmount = (itemTotal * item.discount) / 100
-    const afterDiscount = itemTotal - discountAmount
-    const itemTax = (afterDiscount * item.tax) / 100
+    const itemTax = (itemTotal * (Number(watchedTaxRate) || 0)) / 100
     
-    return afterDiscount + itemTax
+    return itemTotal + itemTax
   }
 
   const onSubmit = async (data: QuotationFormData) => {
@@ -171,33 +163,32 @@ function QuotationFormContent() {
     try {
       const billingType = data.billingType || 'quantity'
       
-      const items: QuotationItem[] = data.items.map((item, index) => {
+      const items: QuotationItem[] = (data.items || []).map((item, index) => {
         let itemTotal = 0
         let quantity = 0
         
+        const unitPrice = item.unitPrice ?? 0
+        const taxRate = data.taxRate ?? 5
         if (billingType === 'hours' && item.hours) {
-          itemTotal = item.hours * item.unitPrice
+          itemTotal = item.hours * unitPrice
           quantity = item.hours
         } else if (billingType === 'days' && item.days) {
-          itemTotal = item.days * item.unitPrice
+          itemTotal = item.days * unitPrice
           quantity = item.days
         } else if (billingType === 'quantity' && item.quantity) {
-          itemTotal = item.quantity * item.unitPrice
+          itemTotal = item.quantity * unitPrice
           quantity = item.quantity
         }
         
-        const discountAmount = (itemTotal * item.discount) / 100
-        const afterDiscount = itemTotal - discountAmount
-        const itemTax = (afterDiscount * item.tax) / 100
+        const itemTax = (itemTotal * taxRate) / 100
         
         return {
           id: `item-${Date.now()}-${index}`,
-          description: item.description,
+          description: item.description ?? '',
           quantity: quantity,
-          unitPrice: item.unitPrice,
-          discount: item.discount,
-          tax: item.tax,
-          total: afterDiscount + itemTax,
+          unitPrice: item.unitPrice ?? 0,
+          tax: taxRate,
+          total: itemTotal + itemTax,
           hours: item.hours,
           days: item.days,
           billingType: billingType,
@@ -205,23 +196,28 @@ function QuotationFormContent() {
       })
 
       const quotationData = {
-        quotationNumber: settingsService.generateQuotationNumber(),
+        quotationNumber: `QUO-${new Date().toISOString().slice(0, 10)}-${Math.random().toString(36).slice(2, 9)}`,
         customerId: data.customerId,
         date: data.date,
         validUntil: data.validUntil,
         billingType: billingType,
-        items: items,
+        items: items.map((it) => ({ ...it, discount: 0 })),
         subtotal: subtotal,
         taxRate: data.taxRate,
         taxAmount: taxAmount,
-        discount: 0,
         total: total,
         status: data.status as QuotationStatus,
         terms: data.terms || "",
         notes: data.notes || "",
       }
 
-      const newQuotation = quotationService.create(quotationData)
+      const res = await fetch('/api/quotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(quotationData),
+      })
+      if (!res.ok) throw new Error('Failed to create quotation')
+      const newQuotation = await res.json()
       
       toast({
         title: "Success",
@@ -247,7 +243,7 @@ function QuotationFormContent() {
   const handleAIResult = (text: string, mode: string) => {
     if (mode === 'product-description') {
       // Set description for the last item
-      const lastIndex = watchedItems.length - 1
+      const lastIndex = (watchedItems || []).length - 1
       if (lastIndex >= 0) {
         setValue(`items.${lastIndex}.description`, text)
       }
@@ -260,7 +256,7 @@ function QuotationFormContent() {
     <div className="space-y-6">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* Customer and Basic Info */}
-        <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
+        <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
           <CardHeader>
             <CardTitle className="text-xl font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2">
               <span className="w-1 h-6 bg-gold rounded"></span>
@@ -277,7 +273,7 @@ function QuotationFormContent() {
                   value={watch("customerId")}
                   onValueChange={(value) => setValue("customerId", value)}
                 >
-                  <SelectTrigger className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60">
+                  <SelectTrigger className="h-12 border-2 border-blue-400 dark:border-blue-800/60">
                     <SelectValue placeholder="Select customer" />
                   </SelectTrigger>
                   <SelectContent>
@@ -294,12 +290,12 @@ function QuotationFormContent() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="date" className="text-blue-900 dark:text-blue-100 font-medium">Quotation Date *</Label>
+                <Label htmlFor="date" className="text-blue-900 dark:text-blue-100 font-medium">Quotation Date</Label>
                 <Input
                   id="date"
                   type="date"
                   {...register("date")}
-                  className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60"
+                  className="h-12 border-2 border-blue-400 dark:border-blue-800/60"
                 />
                 {errors.date && (
                   <p className="text-sm text-red-600 dark:text-red-400">{errors.date.message}</p>
@@ -307,12 +303,12 @@ function QuotationFormContent() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="validUntil" className="text-blue-900 dark:text-blue-100 font-medium">Valid Until *</Label>
+                <Label htmlFor="validUntil" className="text-blue-900 dark:text-blue-100 font-medium">Valid Until</Label>
                 <Input
                   id="validUntil"
                   type="date"
                   {...register("validUntil")}
-                  className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60"
+                  className="h-12 border-2 border-blue-400 dark:border-blue-800/60"
                 />
                 {errors.validUntil && (
                   <p className="text-sm text-red-600 dark:text-red-400">{errors.validUntil.message}</p>
@@ -320,12 +316,12 @@ function QuotationFormContent() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="billingType" className="text-blue-900 dark:text-blue-100 font-medium">Billing Type *</Label>
+                <Label htmlFor="billingType" className="text-blue-900 dark:text-blue-100 font-medium">Billing Type</Label>
                 <Select
                   value={watch("billingType")}
                   onValueChange={(value) => setValue("billingType", value as "hours" | "days" | "quantity")}
                 >
-                  <SelectTrigger className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60">
+                  <SelectTrigger className="h-12 border-2 border-blue-400 dark:border-blue-800/60">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -337,13 +333,13 @@ function QuotationFormContent() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="taxRate" className="text-blue-900 dark:text-blue-100 font-medium">VAT Rate (%) *</Label>
+                <Label htmlFor="taxRate" className="text-blue-900 dark:text-blue-100 font-medium">VAT Rate (%)</Label>
                 <Input
                   id="taxRate"
                   type="number"
                   step="0.01"
                   {...register("taxRate", { valueAsNumber: true })}
-                  className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60"
+                  className="h-12 border-2 border-blue-400 dark:border-blue-800/60"
                 />
                 {errors.taxRate && (
                   <p className="text-sm text-red-600 dark:text-red-400">{errors.taxRate.message}</p>
@@ -351,12 +347,12 @@ function QuotationFormContent() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="status" className="text-blue-900 dark:text-blue-100 font-medium">Status *</Label>
+                <Label htmlFor="status" className="text-blue-900 dark:text-blue-100 font-medium">Status</Label>
                 <Select
                   value={watch("status")}
                   onValueChange={(value) => setValue("status", value as QuotationStatus)}
                 >
-                  <SelectTrigger className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60">
+                  <SelectTrigger className="h-12 border-2 border-blue-400 dark:border-blue-800/60">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -373,7 +369,7 @@ function QuotationFormContent() {
         </Card>
 
         {/* Items Table */}
-        <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
+        <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-xl font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2">
@@ -419,30 +415,28 @@ function QuotationFormContent() {
             {errors.items && (
               <p className="text-sm text-red-600 dark:text-red-400 mb-4">{errors.items.message}</p>
             )}
-            <div className="overflow-x-auto">
-              <Table>
+            <div className="overflow-x-auto w-full">
+              <Table className="w-full min-w-full">
                 <TableHeader>
-                  <TableRow className="bg-gradient-to-r from-blue-800 to-blue-900 dark:from-blue-700 dark:to-blue-800 text-white">
-                    <TableHead className="font-bold">Description *</TableHead>
+                  <TableRow className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 dark:from-blue-900 dark:via-blue-800 dark:to-blue-900 border-b-2 border-blue-400 dark:border-blue-600">
+                    <TableHead className="font-bold text-white text-left">Description *</TableHead>
                     {watchedBillingType === 'hours' && (
-                      <TableHead className="font-bold">Hours</TableHead>
+                      <TableHead className="font-bold text-white">Hours</TableHead>
                     )}
                     {watchedBillingType === 'days' && (
-                      <TableHead className="font-bold">Days</TableHead>
+                      <TableHead className="font-bold text-white">Days</TableHead>
                     )}
                     {watchedBillingType === 'quantity' && (
-                      <TableHead className="font-bold">Quantity</TableHead>
+                      <TableHead className="font-bold text-white">Quantity</TableHead>
                     )}
-                    <TableHead className="font-bold">Unit Price</TableHead>
-                    <TableHead className="font-bold">Discount %</TableHead>
-                    <TableHead className="font-bold">Tax %</TableHead>
-                    <TableHead className="font-bold text-right">Total</TableHead>
-                    <TableHead className="font-bold text-right">Actions</TableHead>
+                    <TableHead className="font-bold text-white">Unit Price</TableHead>
+                    <TableHead className="font-bold text-white text-right">Total</TableHead>
+                    <TableHead className="font-bold text-white text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {fields.map((field, index) => {
-                    const item = watchedItems[index]
+                    const item = (watchedItems || [])[index]
                     const itemTotal = calculateItemTotal(item, index)
                     
                     return (
@@ -451,7 +445,7 @@ function QuotationFormContent() {
                           <Input
                             {...register(`items.${index}.description`)}
                             placeholder="Item description"
-                            className="border-2 border-blue-200/60 dark:border-blue-800/60"
+                            className="border-2 border-blue-400 dark:border-blue-800/60"
                           />
                           {errors.items?.[index]?.description && (
                             <p className="text-xs text-red-600 dark:text-red-400 mt-1">
@@ -465,7 +459,7 @@ function QuotationFormContent() {
                               type="number"
                               step="0.01"
                               {...register(`items.${index}.hours`, { valueAsNumber: true })}
-                              className="border-2 border-blue-200/60 dark:border-blue-800/60"
+                              className="border-2 border-blue-400 dark:border-blue-800/60"
                             />
                           </TableCell>
                         )}
@@ -475,7 +469,7 @@ function QuotationFormContent() {
                               type="number"
                               step="0.01"
                               {...register(`items.${index}.days`, { valueAsNumber: true })}
-                              className="border-2 border-blue-200/60 dark:border-blue-800/60"
+                              className="border-2 border-blue-400 dark:border-blue-800/60"
                             />
                           </TableCell>
                         )}
@@ -485,7 +479,7 @@ function QuotationFormContent() {
                               type="number"
                               step="0.01"
                               {...register(`items.${index}.quantity`, { valueAsNumber: true })}
-                              className="border-2 border-blue-200/60 dark:border-blue-800/60"
+                              className="border-2 border-blue-400 dark:border-blue-800/60"
                             />
                           </TableCell>
                         )}
@@ -494,23 +488,7 @@ function QuotationFormContent() {
                             type="number"
                             step="0.01"
                             {...register(`items.${index}.unitPrice`, { valueAsNumber: true })}
-                            className="border-2 border-blue-200/60 dark:border-blue-800/60"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            {...register(`items.${index}.discount`, { valueAsNumber: true })}
-                            className="border-2 border-blue-200/60 dark:border-blue-800/60"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            {...register(`items.${index}.tax`, { valueAsNumber: true })}
-                            className="border-2 border-blue-200/60 dark:border-blue-800/60"
+                            className="border-2 border-blue-400 dark:border-blue-800/60"
                           />
                         </TableCell>
                         <TableCell className="text-right font-semibold text-blue-900 dark:text-blue-100">
@@ -531,24 +509,24 @@ function QuotationFormContent() {
                     )
                   })}
                   <TableRow className="bg-blue-50 dark:bg-blue-900/50 font-bold border-t-2 border-blue-300 dark:border-blue-700">
-                    <TableCell colSpan={watchedBillingType === 'hours' || watchedBillingType === 'days' ? 6 : 6} className="text-right">
+                    <TableCell colSpan={3} className="text-right">
                       Subtotal:
                     </TableCell>
                     <TableCell className="text-right">{formatCurrency(subtotal)}</TableCell>
                     <TableCell></TableCell>
                   </TableRow>
                   <TableRow className="bg-blue-50 dark:bg-blue-900/50 font-bold">
-                    <TableCell colSpan={watchedBillingType === 'hours' || watchedBillingType === 'days' ? 6 : 6} className="text-right">
+                    <TableCell colSpan={3} className="text-right">
                       VAT ({watchedTaxRate}%):
                     </TableCell>
                     <TableCell className="text-right">{formatCurrency(taxAmount)}</TableCell>
                     <TableCell></TableCell>
                   </TableRow>
-                  <TableRow className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 text-white font-bold border-t-2 border-blue-400 dark:border-blue-600">
-                    <TableCell colSpan={watchedBillingType === 'hours' || watchedBillingType === 'days' ? 6 : 6} className="text-right text-lg">
+                  <TableRow className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 dark:from-blue-900 dark:via-blue-800 dark:to-blue-900 border-t-2 border-blue-400 dark:border-blue-600">
+                    <TableCell colSpan={3} className="text-right text-lg font-bold text-white">
                       Total:
                     </TableCell>
-                    <TableCell className="text-right text-lg">{formatCurrency(total)}</TableCell>
+                    <TableCell className="text-right text-lg font-bold text-white">{formatCurrency(total)}</TableCell>
                     <TableCell></TableCell>
                   </TableRow>
                 </TableBody>
@@ -559,7 +537,7 @@ function QuotationFormContent() {
 
         {/* Terms and Notes */}
         <div className="grid gap-6 md:grid-cols-2">
-          <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card p-6">
+          <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card p-6">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2">
@@ -585,7 +563,7 @@ function QuotationFormContent() {
                 {...register("terms")}
                 rows={6}
                 placeholder="Enter terms and conditions..."
-                className="border-2 border-blue-200/60 dark:border-blue-800/60"
+                className="border-2 border-blue-400 dark:border-blue-800/60"
               />
             </CardContent>
           </Card>
@@ -602,7 +580,7 @@ function QuotationFormContent() {
                 {...register("notes")}
                 rows={6}
                 placeholder="Additional notes..."
-                className="border-2 border-blue-200/60 dark:border-blue-800/60"
+                className="border-2 border-blue-400 dark:border-blue-800/60"
               />
             </CardContent>
           </Card>

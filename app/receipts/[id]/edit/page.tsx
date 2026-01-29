@@ -17,19 +17,18 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Card } from "@/components/ui/card"
-import { receiptService, invoiceService, customerService } from "@/lib/data"
 import { formatCurrency } from "@/lib/utils"
 import { PageHeader } from "@/components/shared/PageHeader"
 
 const receiptSchema = z.object({
-  date: z.string().min(1, "Date is required"),
-  paymentDate: z.string().min(1, "Payment date is required"),
-  amount: z.number().min(0.01, "Amount must be greater than 0"),
-  paymentMethod: z.enum(["cash", "bank_transfer", "cheque", "credit_card", "other"]),
+  date: z.string().optional(),
+  paymentDate: z.string().optional(),
+  amount: z.number().min(0.01, "Amount must be greater than 0").optional(),
+  paymentMethod: z.enum(["cash", "bank_transfer", "cheque", "credit_card", "other"]).optional(),
   referenceNumber: z.string().optional(),
   bankName: z.string().optional(),
   notes: z.string().optional(),
-  status: z.enum(["draft", "issued", "cancelled"]),
+  status: z.enum(["draft", "issued", "cancelled"]).optional(),
 })
 
 type ReceiptFormData = z.infer<typeof receiptSchema>
@@ -40,6 +39,8 @@ export default function EditReceiptPage() {
   const [receipt, setReceipt] = useState<any>(null)
   const [invoice, setInvoice] = useState<any>(null)
   const [remainingAmount, setRemainingAmount] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
 
   const {
     register,
@@ -53,55 +54,95 @@ export default function EditReceiptPage() {
 
   useEffect(() => {
     const id = params.id as string
-    const rcp = receiptService.getById(id)
-    if (rcp) {
-      setReceipt(rcp)
-      const inv = invoiceService.getById(rcp.invoiceId)
-      setInvoice(inv)
-      
-      setValue("date", rcp.date.split("T")[0])
-      setValue("paymentDate", rcp.paymentDate.split("T")[0])
-      setValue("amount", rcp.amount)
-      setValue("paymentMethod", rcp.paymentMethod)
-      setValue("referenceNumber", rcp.referenceNumber || "")
-      setValue("bankName", rcp.bankName || "")
-      setValue("notes", rcp.notes || "")
-      setValue("status", rcp.status)
-
-      if (inv) {
-        const receipts = receiptService.getByInvoiceId(rcp.invoiceId)
-        const totalPaid = receipts
-          .filter(r => r.id !== id && r.status !== 'cancelled')
-          .reduce((sum, r) => sum + r.amount, 0)
-        const remaining = inv.total - totalPaid
-        setRemainingAmount(remaining)
+    if (!id) {
+      setLoading(false)
+      return
+    }
+    let cancelled = false
+    setLoading(true)
+    const load = async () => {
+      try {
+        const rcpRes = await fetch(`/api/receipts/${id}`)
+        const rcp = rcpRes.ok ? await rcpRes.json() : null
+        if (!rcp || cancelled) {
+          if (!cancelled) setReceipt(null)
+          return
+        }
+        const [invRes, receiptsRes] = await Promise.all([
+          fetch(`/api/invoices/${rcp.invoiceId}`),
+          fetch('/api/receipts'),
+        ])
+        if (cancelled) return
+        const inv = invRes.ok ? await invRes.json() : null
+        const allReceipts = receiptsRes.ok ? await receiptsRes.json() : []
+        setReceipt(rcp)
+        setInvoice(inv)
+        const dateStr = (d: string) => (d && d.includes('T') ? d.split('T')[0] : d)
+        setValue("date", dateStr(rcp.date))
+        setValue("paymentDate", dateStr(rcp.paymentDate))
+        setValue("amount", rcp.amount)
+        setValue("paymentMethod", rcp.paymentMethod)
+        setValue("referenceNumber", rcp.referenceNumber || "")
+        setValue("bankName", rcp.bankName || "")
+        setValue("notes", rcp.notes || "")
+        setValue("status", rcp.status)
+        if (inv) {
+          const otherReceipts = (allReceipts || []).filter((r: any) => r.invoiceId === rcp.invoiceId && r.id !== id && r.status !== 'cancelled')
+          const totalPaid = otherReceipts.reduce((sum: number, r: any) => sum + r.amount, 0)
+          setRemainingAmount(inv.total - totalPaid)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     }
+    load()
+    return () => { cancelled = true }
   }, [params.id, setValue])
 
   const watchedAmount = watch("amount")
 
-  const onSubmit = (data: ReceiptFormData) => {
+  const onSubmit = async (data: ReceiptFormData) => {
     if (!receipt) return
-
-    receiptService.update(receipt.id, {
-      date: data.date,
-      paymentDate: data.paymentDate,
-      amount: data.amount,
-      paymentMethod: data.paymentMethod,
-      referenceNumber: data.referenceNumber || undefined,
-      bankName: data.bankName || undefined,
-      notes: data.notes || undefined,
-      status: data.status,
-    })
-
-    router.push(`/receipts/${receipt.id}`)
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/receipts/${receipt.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: data.date,
+          paymentDate: data.paymentDate,
+          amount: data.amount,
+          paymentMethod: data.paymentMethod,
+          referenceNumber: data.referenceNumber || undefined,
+          bankName: data.bankName || undefined,
+          notes: data.notes || undefined,
+          status: data.status,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to update receipt')
+      }
+      router.push(`/receipts/${receipt.id}`)
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.message || 'Failed to update receipt')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  if (!receipt) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <p className="text-muted-foreground">Loading...</p>
+      </div>
+    )
+  }
+  if (!receipt) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Receipt not found</p>
       </div>
     )
   }
@@ -114,7 +155,7 @@ export default function EditReceiptPage() {
       />
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        <Card className="border-2 border-blue-200/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
+        <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
           <h2 className="text-xl font-semibold text-blue-900 mb-6 flex items-center gap-2">
             <span className="w-1 h-6 bg-gold rounded"></span>
             Receipt Information
@@ -128,7 +169,7 @@ export default function EditReceiptPage() {
             {invoice && (
               <div className="space-y-2">
               <Label className="text-blue-900 font-medium">Invoice Details</Label>
-              <div className="p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
+              <div className="p-4 bg-blue-50 rounded-lg border-2 border-blue-400 dark:border-blue-800">
                 <p className="font-semibold text-blue-900">Total: {formatCurrency(invoice.total)}</p>
                 <p className="text-sm text-gray-600">Paid: {formatCurrency(invoice.paidAmount || 0)}</p>
                 <p className="text-sm font-semibold text-gold">Remaining: {formatCurrency(remainingAmount)}</p>
@@ -137,7 +178,7 @@ export default function EditReceiptPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="date" className="text-blue-900 font-medium">Receipt Date *</Label>
+              <Label htmlFor="date" className="text-blue-900 font-medium">Receipt Date</Label>
               <Input type="date" {...register("date")} className="h-12" />
               {errors.date && (
                 <p className="text-sm text-red-600">{errors.date.message}</p>
@@ -145,7 +186,7 @@ export default function EditReceiptPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="paymentDate" className="text-blue-900 font-medium">Payment Date *</Label>
+              <Label htmlFor="paymentDate" className="text-blue-900 font-medium">Payment Date</Label>
               <Input type="date" {...register("paymentDate")} className="h-12" />
               {errors.paymentDate && (
                 <p className="text-sm text-red-600">{errors.paymentDate.message}</p>
@@ -153,7 +194,7 @@ export default function EditReceiptPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="amount" className="text-blue-900 font-medium">Amount *</Label>
+              <Label htmlFor="amount" className="text-blue-900 font-medium">Amount</Label>
               <div className="relative">
                 <Input
                   type="number"
@@ -169,12 +210,12 @@ export default function EditReceiptPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="paymentMethod" className="text-blue-900 font-medium">Payment Method *</Label>
+              <Label htmlFor="paymentMethod" className="text-blue-900 font-medium">Payment Method</Label>
               <Select
                 value={watch("paymentMethod")}
                 onValueChange={(value) => setValue("paymentMethod", value as any)}
               >
-                <SelectTrigger className="h-12 border-2 border-blue-200/60">
+                <SelectTrigger className="h-12 border-2 border-blue-400 dark:border-blue-800/60">
                   <SelectValue placeholder="Select payment method" />
                 </SelectTrigger>
                 <SelectContent>
@@ -188,12 +229,12 @@ export default function EditReceiptPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="status" className="text-blue-900 font-medium">Status *</Label>
+              <Label htmlFor="status" className="text-blue-900 font-medium">Status</Label>
               <Select
                 value={watch("status")}
                 onValueChange={(value) => setValue("status", value as any)}
               >
-                <SelectTrigger className="h-12 border-2 border-blue-200/60">
+                <SelectTrigger className="h-12 border-2 border-blue-400 dark:border-blue-800/60">
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -233,7 +274,7 @@ export default function EditReceiptPage() {
 
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="notes" className="text-blue-900 font-medium">Notes</Label>
-              <Textarea {...register("notes")} rows={4} className="border-2 border-blue-200/60" />
+              <Textarea {...register("notes")} rows={4} className="border-2 border-blue-400 dark:border-blue-800/60" />
             </div>
           </div>
         </Card>
@@ -249,10 +290,11 @@ export default function EditReceiptPage() {
           </Button>
           <Button
             type="submit"
+            disabled={saving}
             variant="gold"
             className="bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-blue-900 hover:from-yellow-500 hover:via-yellow-600 hover:to-yellow-700 shadow-gold hover:shadow-xl font-bold border-2 border-yellow-300/50 px-8 py-3"
           >
-            Update Receipt
+            {saving ? "Saving..." : "Update Receipt"}
           </Button>
         </div>
       </form>

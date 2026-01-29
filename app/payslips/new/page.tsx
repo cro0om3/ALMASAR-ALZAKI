@@ -15,21 +15,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { payslipService, employeeService } from "@/lib/data"
 import { formatCurrency } from "@/lib/utils"
 import { useState, useEffect } from "react"
 
 const payslipSchema = z.object({
-  employeeId: z.string().min(1, "Employee is required"),
-  payPeriodStart: z.string().min(1, "Pay period start is required"),
-  payPeriodEnd: z.string().min(1, "Pay period end is required"),
-  issueDate: z.string().min(1, "Issue date is required"),
-  baseSalary: z.number().min(0),
-  overtime: z.number().min(0),
-  bonuses: z.number().min(0),
-  deductions: z.number().min(0),
-  tax: z.number().min(0),
-  status: z.enum(["draft", "issued", "paid"]),
+  employeeId: z.string().optional(),
+  payPeriodStart: z.string().optional(),
+  payPeriodEnd: z.string().optional(),
+  issueDate: z.string().optional(),
+  baseSalary: z.number().min(0).optional(),
+  overtime: z.number().min(0).optional(),
+  bonuses: z.number().min(0).optional(),
+  deductions: z.number().min(0).optional(),
+  tax: z.number().min(0).optional(),
+  status: z.enum(["draft", "issued", "paid"]).optional(),
   notes: z.string().optional(),
 })
 
@@ -55,20 +54,21 @@ export default function NewPayslipPage() {
   })
 
   useEffect(() => {
-    setEmployees(employeeService.getAll())
+    fetch('/api/employees')
+      .then((r) => r.ok ? r.json() : [])
+      .then((list) => setEmployees(list || []))
   }, [])
 
   const watchedEmployeeId = watch("employeeId")
 
-  // Auto-fill baseSalary from employee.salary when employee is selected
   useEffect(() => {
-    if (watchedEmployeeId) {
-      const employee = employeeService.getById(watchedEmployeeId)
+    if (watchedEmployeeId && employees.length > 0) {
+      const employee = employees.find((e: any) => e.id === watchedEmployeeId)
       if (employee && employee.salary) {
         setValue("baseSalary", employee.salary)
       }
     }
-  }, [watchedEmployeeId, setValue])
+  }, [watchedEmployeeId, setValue, employees])
 
   const watchedBaseSalary = watch("baseSalary") || 0
   const watchedOvertime = watch("overtime") || 0
@@ -82,25 +82,37 @@ export default function NewPayslipPage() {
     setNetPay(net)
   }, [watchedBaseSalary, watchedOvertime, watchedBonuses, watchedDeductions, watchedTax])
 
-  const onSubmit = (data: PayslipFormData) => {
-    const payslipData = {
-      payslipNumber: `PAY-${Date.now()}`,
-      employeeId: data.employeeId,
-      payPeriodStart: data.payPeriodStart,
-      payPeriodEnd: data.payPeriodEnd,
-      issueDate: data.issueDate,
-      baseSalary: data.baseSalary,
-      overtime: data.overtime,
-      bonuses: data.bonuses,
-      deductions: data.deductions,
-      tax: data.tax,
-      netPay,
-      status: data.status,
-      notes: data.notes || "",
+  const onSubmit = async (data: PayslipFormData) => {
+    try {
+      const payslipData = {
+        payslipNumber: `PAY-${Date.now()}`,
+        employeeId: data.employeeId,
+        payPeriodStart: data.payPeriodStart,
+        payPeriodEnd: data.payPeriodEnd,
+        issueDate: data.issueDate,
+        baseSalary: data.baseSalary,
+        overtime: data.overtime,
+        bonuses: data.bonuses,
+        deductions: data.deductions,
+        tax: data.tax,
+        netPay,
+        status: data.status,
+        notes: data.notes || "",
+      }
+      const res = await fetch('/api/payslips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payslipData),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to create payslip')
+      }
+      router.push("/payslips")
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.message || 'Failed to create payslip')
     }
-
-    payslipService.create(payslipData)
-    router.push("/payslips")
   }
 
   return (
@@ -117,7 +129,7 @@ export default function NewPayslipPage() {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="employeeId">Employee *</Label>
+            <Label htmlFor="employeeId">Employee</Label>
             <Select
               value={watch("employeeId")}
               onValueChange={(value) => setValue("employeeId", value)}
@@ -139,7 +151,7 @@ export default function NewPayslipPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="issueDate">Issue Date *</Label>
+            <Label htmlFor="issueDate">Issue Date</Label>
             <Input type="date" {...register("issueDate")} />
             {errors.issueDate && (
               <p className="text-sm text-destructive">{errors.issueDate.message}</p>
@@ -147,7 +159,7 @@ export default function NewPayslipPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="payPeriodStart">Pay Period Start *</Label>
+            <Label htmlFor="payPeriodStart">Pay Period Start</Label>
             <Input type="date" {...register("payPeriodStart")} />
             {errors.payPeriodStart && (
               <p className="text-sm text-destructive">{errors.payPeriodStart.message}</p>
@@ -155,7 +167,7 @@ export default function NewPayslipPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="payPeriodEnd">Pay Period End *</Label>
+            <Label htmlFor="payPeriodEnd">Pay Period End</Label>
             <Input type="date" {...register("payPeriodEnd")} />
             {errors.payPeriodEnd && (
               <p className="text-sm text-destructive">{errors.payPeriodEnd.message}</p>
@@ -163,7 +175,7 @@ export default function NewPayslipPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="baseSalary">Base Salary *</Label>
+            <Label htmlFor="baseSalary">Base Salary</Label>
             <Input
               type="number"
               step="0.01"
@@ -211,7 +223,7 @@ export default function NewPayslipPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="status">Status *</Label>
+            <Label htmlFor="status">Status</Label>
             <Select
               value={watch("status")}
               onValueChange={(value) => setValue("status", value as any)}

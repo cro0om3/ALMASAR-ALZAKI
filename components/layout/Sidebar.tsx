@@ -19,7 +19,9 @@ import {
   ChevronRight,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import Image from "next/image"
+import { settingsService } from "@/lib/data/settings-service"
 
 interface NavItem {
   name: string
@@ -66,11 +68,26 @@ const navigationSections: NavSection[] = [
 export function Sidebar() {
   const pathname = usePathname()
   const [isMobileOpen, setIsMobileOpen] = useState(false)
+  const [logoVersion, setLogoVersion] = useState(0)
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     Orders: true,
     "Human Resources": true,
     Management: true,
   })
+
+  const logoUrl = typeof window !== "undefined" ? settingsService.get().logoUrl : undefined
+  const logoSrc = logoUrl || "/logo.png"
+
+  useEffect(() => {
+    const onSettingsUpdate = () => setLogoVersion((v) => v + 1)
+    window.addEventListener("settings-updated", onSettingsUpdate)
+    // Re-read logo after hydration may have run (avoids needing multiple reloads if event fired before listener attached)
+    const t = setTimeout(() => setLogoVersion((v) => v + 1), 200)
+    return () => {
+      window.removeEventListener("settings-updated", onSettingsUpdate)
+      clearTimeout(t)
+    }
+  }, [])
 
   const toggleSection = (title: string) => {
     setExpandedSections((prev) => ({
@@ -98,17 +115,35 @@ export function Sidebar() {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed top-0 left-0 z-40 h-screen w-64 bg-white dark:bg-blue-950 border-r-2 border-blue-200/60 dark:border-blue-800/60 shadow-lg transition-transform lg:translate-x-0",
+          "fixed top-0 left-0 z-40 h-screen w-64 bg-white/95 dark:bg-blue-950/95 border-r-2 border-blue-400 dark:border-blue-800/60 shadow-xl backdrop-blur-md backdrop-saturate-150 transition-transform lg:translate-x-0",
           isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
         <div className="h-full px-3 py-4 overflow-y-auto">
           <div className="mb-8 mt-12 lg:mt-4 px-3">
             <div className="relative">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-700 via-blue-600 to-gold bg-clip-text text-transparent">
-                ALMSAR ALZAKI
-              </h1>
-              <p className="text-xs text-gray-600 dark:text-gray-300 font-medium mt-1">T&M CRM System</p>
+              <Link href="/" className="flex justify-center mb-2 group">
+                {logoSrc.startsWith("data:") ? (
+                  <img
+                    key={logoVersion}
+                    src={logoSrc}
+                    alt="ALMSAR ALZAKI Logo"
+                    className="h-20 w-auto object-contain drop-shadow-lg group-hover:drop-shadow-xl group-hover:scale-105 transition-all duration-300"
+                  />
+                ) : (
+                  <Image
+                    key={logoVersion}
+                    src={logoSrc}
+                    alt="ALMSAR ALZAKI Logo"
+                    width={200}
+                    height={82}
+                    className="h-20 w-auto object-contain drop-shadow-lg group-hover:drop-shadow-xl group-hover:scale-105 transition-all duration-300"
+                    priority
+                    unoptimized={logoSrc.startsWith("http")}
+                  />
+                )}
+              </Link>
+              <p className="text-xs text-gray-600 dark:text-gray-300 font-medium mt-1 text-center">Transport & Maintenance CRM System</p>
               <div className="absolute -bottom-2 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-600 via-gold to-blue-600 rounded-full"></div>
             </div>
           </div>

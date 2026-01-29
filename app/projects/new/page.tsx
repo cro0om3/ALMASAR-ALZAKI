@@ -17,17 +17,15 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Card } from "@/components/ui/card"
-import { projectService } from "@/lib/data/project-service"
 import { ProjectStatus } from "@/types/project"
-import { quotationService, customerService } from "@/lib/data"
 import { BillingType } from "@/types/project"
 
 const projectSchema = z.object({
-  quotationId: z.string().min(1, "Quotation is required"),
-  title: z.string().min(1, "Project title is required"),
+  quotationId: z.string().optional(),
+  title: z.string().optional(),
   description: z.string().optional(),
-  startDate: z.string().min(1, "Start date is required"),
-  billingType: z.enum(["hours", "days", "fixed"]),
+  startDate: z.string().optional(),
+  billingType: z.enum(["hours", "days", "fixed"]).optional(),
   hourlyRate: z.number().optional(),
   dailyRate: z.number().optional(),
   fixedAmount: z.number().optional(),
@@ -35,20 +33,6 @@ const projectSchema = z.object({
   poDate: z.string().optional(),
   terms: z.string().optional(),
   notes: z.string().optional(),
-}).refine((data) => {
-  if (data.billingType === "hours" && !data.hourlyRate) {
-    return false
-  }
-  if (data.billingType === "days" && !data.dailyRate) {
-    return false
-  }
-  if (data.billingType === "fixed" && !data.fixedAmount) {
-    return false
-  }
-  return true
-}, {
-  message: "Please enter the price according to billing type",
-  path: ["billingType"],
 })
 
 type ProjectFormData = z.infer<typeof projectSchema>
@@ -75,27 +59,22 @@ export default function NewProjectPage() {
   const billingType = watch("billingType")
 
   useEffect(() => {
-    const allQuotations = quotationService.getAll()
-    const acceptedQuotations = allQuotations.filter(q => q.status === 'accepted')
-    setQuotations(acceptedQuotations)
+    fetch('/api/quotations')
+      .then((r) => r.ok ? r.json() : [])
+      .then((list) => setQuotations((list || []).filter((q: any) => q.status === 'accepted')))
   }, [])
 
   const handleQuotationChange = (quotationId: string) => {
     setValue("quotationId", quotationId)
-    const quotation = quotationService.getById(quotationId)
+    const quotation = quotations.find((q: any) => q.id === quotationId)
     if (quotation) {
       setSelectedQuotation(quotation)
-      const customer = customerService.getById(quotation.customerId)
-      
-      // Auto-set billing type from quotation
       if (quotation.billingType) {
         if (quotation.billingType === 'hours' || quotation.billingType === 'days') {
           setValue("billingType", quotation.billingType as BillingType)
         } else {
           setValue("billingType", "fixed")
         }
-        
-        // Auto-set rates from quotation items if available
         if (quotation.items && quotation.items.length > 0) {
           const firstItem = quotation.items[0]
           if (quotation.billingType === 'hours' && firstItem.unitPrice) {
@@ -108,35 +87,43 @@ export default function NewProjectPage() {
     }
   }
 
-  const onSubmit = (data: ProjectFormData) => {
-    const quotation = quotationService.getById(data.quotationId)
+  const onSubmit = async (data: ProjectFormData) => {
+    const quotation = quotations.find((q: any) => q.id === data.quotationId)
     if (!quotation) return
-
-    const projectData = {
-      projectNumber: `PRJ-${Date.now()}`,
-      quotationId: data.quotationId,
-      customerId: quotation.customerId,
-      title: data.title,
-      description: data.description || "",
-      startDate: data.startDate,
-      billingType: data.billingType as BillingType,
-      hourlyRate: data.hourlyRate,
-      dailyRate: data.dailyRate,
-      fixedAmount: data.fixedAmount,
-      poNumber: data.poNumber,
-      poDate: data.poDate,
-      poReceived: !!data.poNumber,
-      assignedVehicles: [],
-      status: data.poNumber ? 'po_received' : 'quotation_sent',
-      terms: data.terms || "",
-      notes: data.notes || "",
+    try {
+      const projectData = {
+        projectNumber: `PRJ-${Date.now()}`,
+        quotationId: data.quotationId,
+        customerId: quotation.customerId,
+        title: data.title,
+        description: data.description || "",
+        startDate: data.startDate,
+        billingType: data.billingType as BillingType,
+        hourlyRate: data.hourlyRate,
+        dailyRate: data.dailyRate,
+        fixedAmount: data.fixedAmount,
+        poNumber: data.poNumber,
+        poDate: data.poDate,
+        poReceived: !!data.poNumber,
+        assignedVehicles: [],
+        status: (data.poNumber ? 'po_received' : 'quotation_sent') as ProjectStatus,
+        terms: data.terms || "",
+        notes: data.notes || "",
+      }
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(projectData),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to create project')
+      }
+      router.push("/projects")
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.message || 'Failed to create project')
     }
-
-    projectService.create({
-      ...projectData,
-      status: projectData.status as ProjectStatus
-    })
-    router.push("/projects")
   }
 
   return (
@@ -151,7 +138,7 @@ export default function NewProjectPage() {
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        <Card className="border-2 border-blue-200/60 p-6">
+        <Card className="border-2 border-blue-400 dark:border-blue-800/60 p-6">
           <h2 className="text-xl font-semibold text-blue-900 mb-6 flex items-center gap-2">
             <span className="w-1 h-6 bg-gold rounded"></span>
             Project Information
@@ -159,12 +146,12 @@ export default function NewProjectPage() {
           
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="quotationId" className="text-blue-900 font-medium">Quotation *</Label>
+              <Label htmlFor="quotationId" className="text-blue-900 font-medium">Quotation</Label>
               <Select
                 value={watch("quotationId") || ""}
                 onValueChange={handleQuotationChange}
               >
-                <SelectTrigger className="h-12 border-2 border-blue-200/60">
+                <SelectTrigger className="h-12 border-2 border-blue-400 dark:border-blue-800/60">
                   <SelectValue placeholder="Select accepted quotation" />
                 </SelectTrigger>
                 <SelectContent>
@@ -181,7 +168,7 @@ export default function NewProjectPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="title" className="text-blue-900 font-medium">Project Title *</Label>
+              <Label htmlFor="title" className="text-blue-900 font-medium">Project Title</Label>
               <Input id="title" {...register("title")} className="h-12" />
               {errors.title && (
                 <p className="text-sm text-red-600">{errors.title.message}</p>
@@ -189,7 +176,7 @@ export default function NewProjectPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="startDate" className="text-blue-900 font-medium">Start Date *</Label>
+              <Label htmlFor="startDate" className="text-blue-900 font-medium">Start Date</Label>
               <Input type="date" id="startDate" {...register("startDate")} className="h-12" />
               {errors.startDate && (
                 <p className="text-sm text-red-600">{errors.startDate.message}</p>
@@ -197,12 +184,12 @@ export default function NewProjectPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="billingType" className="text-blue-900 font-medium">Billing Type *</Label>
+              <Label htmlFor="billingType" className="text-blue-900 font-medium">Billing Type</Label>
               <Select
                 value={billingType}
                 onValueChange={(value) => setValue("billingType", value as BillingType)}
               >
-                <SelectTrigger className="h-12 border-2 border-blue-200/60">
+                <SelectTrigger className="h-12 border-2 border-blue-400 dark:border-blue-800/60">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -215,7 +202,7 @@ export default function NewProjectPage() {
 
             {billingType === "hours" && (
               <div className="space-y-2">
-                <Label htmlFor="hourlyRate" className="text-blue-900 font-medium">Hourly Rate *</Label>
+                <Label htmlFor="hourlyRate" className="text-blue-900 font-medium">Hourly Rate</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -231,7 +218,7 @@ export default function NewProjectPage() {
 
             {billingType === "days" && (
               <div className="space-y-2">
-                <Label htmlFor="dailyRate" className="text-blue-900 font-medium">Daily Rate *</Label>
+                <Label htmlFor="dailyRate" className="text-blue-900 font-medium">Daily Rate</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -247,7 +234,7 @@ export default function NewProjectPage() {
 
             {billingType === "fixed" && (
               <div className="space-y-2">
-                <Label htmlFor="fixedAmount" className="text-blue-900 font-medium">Fixed Amount *</Label>
+                <Label htmlFor="fixedAmount" className="text-blue-900 font-medium">Fixed Amount</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -280,7 +267,7 @@ export default function NewProjectPage() {
               id="description"
               {...register("description")}
               rows={4}
-              className="border-2 border-blue-200/60"
+              className="border-2 border-blue-400 dark:border-blue-800/60"
             />
           </div>
         </Card>

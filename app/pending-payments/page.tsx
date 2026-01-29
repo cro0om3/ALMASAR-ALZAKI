@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Search, Eye, Receipt as ReceiptIcon, Plus } from "lucide-react"
-import { receiptService, invoiceService, customerService } from "@/lib/data"
 import { Invoice } from "@/types"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { useRouter } from "next/navigation"
@@ -24,18 +23,42 @@ import { Card } from "@/components/ui/card"
 export default function PendingPaymentsPage() {
   const [pendingInvoices, setPendingInvoices] = useState<Invoice[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
-    const loadPendingPayments = () => {
-      const pending = receiptService.getPendingPayments()
-      const invoicesWithCustomers = pending.map(inv => ({
-        ...inv,
-        customer: customerService.getById(inv.customerId),
-      }))
-      setPendingInvoices(invoicesWithCustomers)
+    let cancelled = false
+    setLoading(true)
+    const load = async () => {
+      try {
+        const [invRes, rcpRes, custRes] = await Promise.all([
+          fetch('/api/invoices'),
+          fetch('/api/receipts'),
+          fetch('/api/customers'),
+        ])
+        if (cancelled) return
+        const invoices = invRes.ok ? await invRes.json() : []
+        const receipts = rcpRes.ok ? await rcpRes.json() : []
+        const customers = custRes.ok ? await custRes.json() : []
+        const customerMap = new Map((customers || []).map((c: any) => [c.id, c]))
+        const pending = (invoices || []).filter((inv: any) => {
+          if (inv.status === 'cancelled') return false
+          const totalPaid = (receipts || [])
+            .filter((r: any) => r.invoiceId === inv.id && r.status !== 'cancelled')
+            .reduce((sum: number, r: any) => sum + r.amount, 0)
+          return totalPaid < inv.total
+        })
+        const invoicesWithCustomers = pending.map((inv: any) => ({
+          ...inv,
+          customer: customerMap.get(inv.customerId),
+        }))
+        if (!cancelled) setPendingInvoices(invoicesWithCustomers)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
-    loadPendingPayments()
+    load()
+    return () => { cancelled = true }
   }, [])
 
   const filteredInvoices = pendingInvoices.filter((invoice) => {
@@ -73,7 +96,7 @@ export default function PendingPaymentsPage() {
         description="Invoices with outstanding balances"
       />
 
-      <Card className="border-2 border-blue-200/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
         <div className="p-6 space-y-4">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
@@ -83,7 +106,7 @@ export default function PendingPaymentsPage() {
                   placeholder="Search by invoice number, customer, or project..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 border-2 border-blue-200/60"
+                  className="pl-10 border-2 border-blue-400 dark:border-blue-800/60"
                 />
               </div>
             </div>
@@ -101,17 +124,17 @@ export default function PendingPaymentsPage() {
 
         <Table>
           <TableHeader>
-            <TableRow className="bg-gradient-to-r from-blue-800 to-blue-900 dark:from-blue-700 dark:to-blue-800 text-white">
-              <TableHead className="font-bold">Invoice Number</TableHead>
-              <TableHead className="font-bold">Customer</TableHead>
-              <TableHead className="font-bold">Project</TableHead>
-              <TableHead className="font-bold">Invoice Date</TableHead>
-              <TableHead className="font-bold">Due Date</TableHead>
-              <TableHead className="font-bold">Total Amount</TableHead>
-              <TableHead className="font-bold">Paid Amount</TableHead>
-              <TableHead className="font-bold">Pending</TableHead>
-              <TableHead className="font-bold">Status</TableHead>
-              <TableHead className="text-right font-bold">Actions</TableHead>
+            <TableRow className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 dark:from-blue-900 dark:via-blue-800 dark:to-blue-900 border-b-0">
+              <TableHead className="font-bold text-white">Invoice Number</TableHead>
+              <TableHead className="font-bold text-white">Customer</TableHead>
+              <TableHead className="font-bold text-white">Project</TableHead>
+              <TableHead className="font-bold text-white">Invoice Date</TableHead>
+              <TableHead className="font-bold text-white">Due Date</TableHead>
+              <TableHead className="font-bold text-white">Total Amount</TableHead>
+              <TableHead className="font-bold text-white">Paid Amount</TableHead>
+              <TableHead className="font-bold text-white">Pending</TableHead>
+              <TableHead className="font-bold text-white">Status</TableHead>
+              <TableHead className="text-right font-bold text-white">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

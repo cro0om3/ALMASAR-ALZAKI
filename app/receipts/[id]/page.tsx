@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Edit, Download } from "lucide-react"
-import { receiptService, invoiceService, customerService, purchaseOrderService, quotationService } from "@/lib/data"
 import { Receipt } from "@/types"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { PageHeader } from "@/components/shared/PageHeader"
@@ -23,32 +22,59 @@ export default function ReceiptDetailPage() {
   const [invoice, setInvoice] = useState<any>(null)
   const [purchaseOrder, setPurchaseOrder] = useState<any>(null)
   const [quotation, setQuotation] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const id = params.id as string
-    const rcp = receiptService.getById(id)
-    if (rcp) {
-      const inv = invoiceService.getById(rcp.invoiceId)
-      const customer = customerService.getById(rcp.customerId)
-      
-      // Get Purchase Order if exists
-      const po = inv?.purchaseOrderId ? purchaseOrderService.getById(inv.purchaseOrderId) : null
-      
-      // Get Quotation - try from PO first, then from Invoice
-      let q = null
-      if (po?.quotationId) {
-        q = quotationService.getById(po.quotationId)
-      } else if (inv?.quotationId) {
-        q = quotationService.getById(inv.quotationId)
-      }
-      
-      setInvoice(inv)
-      setPurchaseOrder(po)
-      setQuotation(q)
-      setReceipt({ ...rcp, invoice: inv, customer })
+    if (!id) {
+      setLoading(false)
+      return
     }
+    let cancelled = false
+    setLoading(true)
+    const load = async () => {
+      try {
+        const rcpRes = await fetch(`/api/receipts/${id}`)
+        const rcp = rcpRes.ok ? await rcpRes.json() : null
+        if (!rcp || cancelled) {
+          if (!cancelled) setReceipt(null)
+          return
+        }
+        const [invRes, customersRes, posRes, quotationsRes] = await Promise.all([
+          fetch(`/api/invoices/${rcp.invoiceId}`),
+          fetch('/api/customers'),
+          fetch('/api/purchase-orders'),
+          fetch('/api/quotations'),
+        ])
+        if (cancelled) return
+        const inv = invRes.ok ? await invRes.json() : null
+        const customers = customersRes.ok ? await customersRes.json() : []
+        const purchaseOrders = posRes.ok ? await posRes.json() : []
+        const quotations = quotationsRes.ok ? await quotationsRes.json() : []
+        const customer = (customers || []).find((c: any) => c.id === rcp.customerId)
+        const po = inv?.purchaseOrderId ? (purchaseOrders || []).find((p: any) => p.id === inv.purchaseOrderId) : null
+        const q = (po?.quotationId ? quotations.find((x: any) => x.id === po.quotationId) : null) ?? (inv?.quotationId ? quotations.find((x: any) => x.id === inv.quotationId) : null)
+        if (!cancelled) {
+          setInvoice(inv)
+          setPurchaseOrder(po)
+          setQuotation(q)
+          setReceipt({ ...rcp, invoice: inv, customer })
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
   }, [params.id])
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    )
+  }
   if (!receipt) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -155,7 +181,7 @@ export default function ReceiptDetailPage() {
       />
 
       <div className="grid gap-6 md:grid-cols-2">
-        <Card className="border-2 border-blue-200/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
+        <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
           <CardHeader>
             <CardTitle className="text-xl font-bold text-blue-900 dark:text-blue-100">Receipt Information</CardTitle>
           </CardHeader>
@@ -201,7 +227,7 @@ export default function ReceiptDetailPage() {
                   <img
                     src={receipt.paymentImageUrl}
                     alt="Payment proof"
-                    className="max-w-full h-auto max-h-96 rounded-lg border-2 border-blue-200/60 dark:border-blue-800/60 cursor-pointer hover:opacity-90 transition-opacity"
+                    className="max-w-full h-auto max-h-96 rounded-lg border-2 border-blue-400 dark:border-blue-800/60 dark:border-blue-800/60 cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => window.open(receipt.paymentImageUrl, '_blank')}
                   />
                 </div>
@@ -252,7 +278,7 @@ export default function ReceiptDetailPage() {
       </div>
 
       {receipt.notes && (
-        <Card className="border-2 border-blue-200/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
+        <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
           <CardHeader>
             <CardTitle className="text-xl font-bold text-blue-900 dark:text-blue-100">Notes</CardTitle>
           </CardHeader>

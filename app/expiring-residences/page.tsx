@@ -20,7 +20,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { customerService, vendorService, employeeService } from "@/lib/data"
 import { Customer, Vendor, Employee } from "@/types"
 import { formatDate, getResidenceStatus, calculateDaysRemaining } from "@/lib/utils"
 import { AlertTriangle, Users, Building2, UserCircle } from "lucide-react"
@@ -42,81 +41,79 @@ export default function ExpiringResidencesPage() {
   const [typeFilter, setTypeFilter] = useState<string>("all")
 
   useEffect(() => {
-    loadResidences()
+    let cancelled = false
+    const load = async () => {
+      try {
+        const [custRes, vendRes, empRes] = await Promise.all([
+          fetch('/api/customers'),
+          fetch('/api/vendors'),
+          fetch('/api/employees'),
+        ])
+        if (cancelled) return
+        const customers = custRes.ok ? await custRes.json() : []
+        const vendors = vendRes.ok ? await vendRes.json() : []
+        const employees = empRes.ok ? await empRes.json() : []
+        const expiring: ExpiringResidence[] = []
+        ;(customers || []).forEach((customer: any) => {
+          if (customer.residenceExpiryDate) {
+            const status = getResidenceStatus(customer.residenceExpiryDate)
+            if (status === 'expired' || status === 'critical' || status === 'warning') {
+              expiring.push({
+                id: customer.id,
+                name: customer.name,
+                type: 'customer',
+                expiryDate: customer.residenceExpiryDate,
+                status,
+                link: `/customers/${customer.id}`,
+                nationality: customer.nationality,
+                idNumber: customer.idNumber,
+              })
+            }
+          }
+        })
+        ;(vendors || []).forEach((vendor: any) => {
+          if (vendor.residenceExpiryDate) {
+            const status = getResidenceStatus(vendor.residenceExpiryDate)
+            if (status === 'expired' || status === 'critical' || status === 'warning') {
+              expiring.push({
+                id: vendor.id,
+                name: vendor.name,
+                type: 'vendor',
+                expiryDate: vendor.residenceExpiryDate,
+                status,
+                link: `/vendors/${vendor.id}`,
+                nationality: vendor.nationality,
+                idNumber: vendor.idNumber,
+              })
+            }
+          }
+        })
+        ;(employees || []).forEach((employee: any) => {
+          if (employee.residenceExpiryDate) {
+            const status = getResidenceStatus(employee.residenceExpiryDate)
+            if (status === 'expired' || status === 'critical' || status === 'warning') {
+              expiring.push({
+                id: employee.id,
+                name: `${employee.firstName} ${employee.lastName}`,
+                type: 'employee',
+                expiryDate: employee.residenceExpiryDate,
+                status,
+                link: `/employees/${employee.id}`,
+                nationality: employee.nationality,
+                idNumber: employee.idNumber,
+              })
+            }
+          }
+        })
+        expiring.sort((a, b) => calculateDaysRemaining(a.expiryDate) - calculateDaysRemaining(b.expiryDate))
+        if (!cancelled) setResidences(expiring)
+      } catch (_e) {
+        if (!cancelled) setResidences([])
+      }
+    }
+    load()
+    return () => { cancelled = true }
   }, [])
-
-  const loadResidences = () => {
-    const expiring: ExpiringResidence[] = []
-
-    // Check customers
-    const customers = customerService.getAll()
-    customers.forEach((customer) => {
-      if (customer.residenceExpiryDate) {
-        const status = getResidenceStatus(customer.residenceExpiryDate)
-        if (status === 'expired' || status === 'critical' || status === 'warning') {
-          expiring.push({
-            id: customer.id,
-            name: customer.name,
-            type: 'customer',
-            expiryDate: customer.residenceExpiryDate,
-            status,
-            link: `/customers/${customer.id}`,
-            nationality: customer.nationality,
-            idNumber: customer.idNumber,
-          })
-        }
-      }
-    })
-
-    // Check vendors
-    const vendors = vendorService.getAll()
-    vendors.forEach((vendor) => {
-      if (vendor.residenceExpiryDate) {
-        const status = getResidenceStatus(vendor.residenceExpiryDate)
-        if (status === 'expired' || status === 'critical' || status === 'warning') {
-          expiring.push({
-            id: vendor.id,
-            name: vendor.name,
-            type: 'vendor',
-            expiryDate: vendor.residenceExpiryDate,
-            status,
-            link: `/vendors/${vendor.id}`,
-            nationality: vendor.nationality,
-            idNumber: vendor.idNumber,
-          })
-        }
-      }
-    })
-
-    // Check employees
-    const employees = employeeService.getAll()
-    employees.forEach((employee) => {
-      if (employee.residenceExpiryDate) {
-        const status = getResidenceStatus(employee.residenceExpiryDate)
-        if (status === 'expired' || status === 'critical' || status === 'warning') {
-          expiring.push({
-            id: employee.id,
-            name: `${employee.firstName} ${employee.lastName}`,
-            type: 'employee',
-            expiryDate: employee.residenceExpiryDate,
-            status,
-            link: `/employees/${employee.id}`,
-            nationality: employee.nationality,
-            idNumber: employee.idNumber,
-          })
-        }
-      }
-    })
-
-    // Sort by expiry date (earliest first)
-    expiring.sort((a, b) => {
-      const daysA = calculateDaysRemaining(a.expiryDate)
-      const daysB = calculateDaysRemaining(b.expiryDate)
-      return daysA - daysB
-    })
-
-    setResidences(expiring)
-  }
 
   const filteredResidences = residences.filter((residence) => {
     if (statusFilter !== "all" && residence.status !== statusFilter) return false
@@ -214,7 +211,7 @@ export default function ExpiringResidencesPage() {
       </div>
 
       {/* Filters */}
-      <Card className="border-2 border-blue-200/60">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60">
         <CardHeader>
           <CardTitle className="text-xl font-bold text-blue-900 dark:text-blue-100">Filters</CardTitle>
         </CardHeader>
@@ -254,7 +251,7 @@ export default function ExpiringResidencesPage() {
       </Card>
 
       {/* Residences Table */}
-      <Card className="border-2 border-blue-200/60 shadow-card overflow-hidden">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card overflow-hidden">
         <CardHeader>
           <CardTitle className="text-xl font-bold text-blue-900 dark:text-blue-100">Expiring Residences List</CardTitle>
         </CardHeader>
@@ -266,15 +263,15 @@ export default function ExpiringResidencesPage() {
           ) : (
             <Table>
               <TableHeader>
-                <TableRow className="bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-900/50 dark:to-blue-800/50 border-b-2 border-blue-200 dark:border-blue-800">
-                  <TableHead className="font-bold text-blue-900 dark:text-blue-100">Type</TableHead>
-                  <TableHead className="font-bold text-blue-900 dark:text-blue-100">Name</TableHead>
-                  <TableHead className="font-bold text-blue-900 dark:text-blue-100">ID Number</TableHead>
-                  <TableHead className="font-bold text-blue-900 dark:text-blue-100">Nationality</TableHead>
-                  <TableHead className="font-bold text-blue-900 dark:text-blue-100">Expiry Date</TableHead>
-                  <TableHead className="font-bold text-blue-900 dark:text-blue-100">Days Remaining</TableHead>
-                  <TableHead className="font-bold text-blue-900 dark:text-blue-100">Status</TableHead>
-                  <TableHead className="text-right font-bold text-blue-900 dark:text-blue-100">Action</TableHead>
+                <TableRow className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 dark:from-blue-900 dark:via-blue-800 dark:to-blue-900 border-b-0">
+                  <TableHead className="font-bold text-white">Type</TableHead>
+                  <TableHead className="font-bold text-white">Name</TableHead>
+                  <TableHead className="font-bold text-white">ID Number</TableHead>
+                  <TableHead className="font-bold text-white">Nationality</TableHead>
+                  <TableHead className="font-bold text-white">Expiry Date</TableHead>
+                  <TableHead className="font-bold text-white">Days Remaining</TableHead>
+                  <TableHead className="font-bold text-white">Status</TableHead>
+                  <TableHead className="text-right font-bold text-white">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

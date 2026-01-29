@@ -13,15 +13,22 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Search, Eye, Edit, Trash2, Receipt as ReceiptIcon } from "lucide-react"
-import { receiptService } from "@/lib/data"
-import { invoiceService, customerService } from "@/lib/data"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Plus, Search, Eye, Edit, Trash2, Receipt as ReceiptIcon, Download, FileSpreadsheet, FileText, File } from "lucide-react"
 import { Receipt } from "@/types"
+import type { Invoice, Customer } from "@/types"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { Card } from "@/components/ui/card"
 import { usePermissions } from "@/lib/hooks/use-permissions"
+import { exportToExcel, exportToWord, exportToPDF, ExportData } from "@/lib/utils/export-utils"
+import { useToast } from "@/lib/hooks/use-toast"
 import {
   Select,
   SelectContent,
@@ -31,43 +38,112 @@ import {
 } from "@/components/ui/select"
 
 export default function ReceiptsPage() {
-  const [receipts, setReceipts] = useState<Receipt[]>([])
+  const [receipts, setReceipts] = useState<(Receipt & { invoice?: Invoice; customer?: Customer })[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
   const { canEdit, canDelete } = usePermissions()
+  const { toast } = useToast()
+
+  const getPaymentMethodLabelForExport = (method: string) => {
+    switch (method) {
+      case "cash": return "Cash"
+      case "bank_transfer": return "Bank Transfer"
+      case "cheque": return "Cheque"
+      case "credit_card": return "Credit Card"
+      default: return "Other"
+    }
+  }
+
+  const buildExportData = (receipt: Receipt & { invoice?: Invoice; customer?: Customer }): ExportData => ({
+    title: "PAYMENT RECEIPT",
+    documentNumber: receipt.receiptNumber,
+    date: receipt.date,
+    customer: receipt.customer ? { name: receipt.customer.name, email: receipt.customer.email, phone: receipt.customer.phone, address: receipt.customer.address } : undefined,
+    items: [{
+      description: `Payment for Invoice ${receipt.invoice?.invoiceNumber || 'N/A'}`,
+      quantity: 1,
+      unitPrice: receipt.amount,
+      total: receipt.amount,
+    }],
+    subtotal: receipt.amount,
+    total: receipt.amount,
+    notes: receipt.notes,
+    additionalFields: {
+      "Payment Date": formatDate(receipt.paymentDate),
+      "Invoice Number": receipt.invoice?.invoiceNumber || "N/A",
+      "Payment Method": getPaymentMethodLabelForExport(receipt.paymentMethod),
+      "Reference Number": receipt.referenceNumber ?? "",
+      "Bank Name": receipt.bankName ?? "",
+      "Status": receipt.status,
+    },
+  })
+
+  const handleExportReceipt = async (id: string, type: 'excel' | 'word' | 'pdf') => {
+    try {
+      const rRes = await fetch(`/api/receipts/${id}`)
+      if (!rRes.ok) throw new Error('Failed to load receipt')
+      const receipt = await rRes.json()
+      const [iRes, cRes] = await Promise.all([
+        receipt.invoiceId ? fetch(`/api/invoices/${receipt.invoiceId}`) : Promise.resolve({ ok: false }),
+        receipt.customerId ? fetch(`/api/customers/${receipt.customerId}`) : Promise.resolve({ ok: false }),
+      ])
+      const invoice = iRes instanceof Response && iRes.ok ? await iRes.json() : null
+      const customer = cRes instanceof Response && cRes.ok ? await cRes.json() : null
+      const data = buildExportData({ ...receipt, invoice, customer })
+      const filename = `Receipt-${receipt.receiptNumber}`
+      switch (type) {
+        case 'excel': exportToExcel(data, filename); break
+        case 'word': exportToWord(data, filename); break
+        case 'pdf': exportToPDF(data, filename); break
+      }
+      toast({ title: "Export Successful", description: `Receipt exported to ${type.toUpperCase()} successfully` })
+    } catch {
+      toast({ title: "Export Failed", description: "Failed to export receipt.", variant: "destructive" })
+    }
+  }
+
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      const [rRes, iRes, cRes] = await Promise.all([
+        fetch('/api/receipts'),
+        fetch('/api/invoices'),
+        fetch('/api/customers'),
+      ])
+      if (!rRes.ok) throw new Error('Failed to load')
+      const allReceipts = await rRes.json()
+      const invoices = iRes.ok ? await iRes.json() : []
+      const customers = cRes.ok ? await cRes.json() : []
+      const iMap = new Map((invoices || []).map((i: Invoice) => [i.id, i]))
+      const cMap = new Map((customers || []).map((c: Customer) => [c.id, c]))
+      setReceipts((allReceipts || []).map((r: Receipt) => ({
+        ...r,
+        invoice: iMap.get(r.invoiceId),
+        customer: cMap.get(r.customerId),
+      })))
+    } catch (e) {
+      console.error(e)
+      setReceipts([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const loadReceipts = () => {
-      const allReceipts = receiptService.getAll()
-      const receiptsWithDetails = allReceipts.map(r => {
-        const invoice = invoiceService.getById(r.invoiceId)
-        const customer = customerService.getById(r.customerId)
-        return {
-          ...r,
-          invoice,
-          customer,
-        }
-      })
-      setReceipts(receiptsWithDetails)
-    }
-    loadReceipts()
+    loadData()
   }, [])
 
-  const handleDelete = (id: string) => {
-    if (confirm("Are you sure you want to delete this receipt?")) {
-      receiptService.delete(id)
-      const allReceipts = receiptService.getAll()
-      const receiptsWithDetails = allReceipts.map(r => {
-        const invoice = invoiceService.getById(r.invoiceId)
-        const customer = customerService.getById(r.customerId)
-        return {
-          ...r,
-          invoice,
-          customer,
-        }
-      })
-      setReceipts(receiptsWithDetails)
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this receipt?")) return
+    try {
+      const res = await fetch(`/api/receipts/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete')
+      await loadData()
+    } catch (e) {
+      console.error(e)
+      alert('Failed to delete receipt.')
     }
   }
 
@@ -122,7 +198,7 @@ export default function ReceiptsPage() {
         actionHref={canEdit('receipts') ? "/receipts/new" : undefined}
       />
 
-      <Card className="border-2 border-blue-200/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
         <div className="p-6 space-y-4">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
@@ -132,12 +208,12 @@ export default function ReceiptsPage() {
                   placeholder="Search by receipt number, invoice, customer, or reference..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 border-2 border-blue-200/60"
+                  className="pl-10 border-2 border-blue-400 dark:border-blue-800/60"
                 />
               </div>
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full md:w-48 border-2 border-blue-200/60">
+              <SelectTrigger className="w-full md:w-48 border-2 border-blue-400 dark:border-blue-800/60">
                 <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
               <SelectContent>
@@ -161,15 +237,15 @@ export default function ReceiptsPage() {
 
         <Table>
           <TableHeader>
-            <TableRow className="bg-gradient-to-r from-blue-800 to-blue-900 dark:from-blue-700 dark:to-blue-800 text-white">
-              <TableHead className="font-bold">Receipt Number</TableHead>
-              <TableHead className="font-bold">Invoice</TableHead>
-              <TableHead className="font-bold">Customer</TableHead>
-              <TableHead className="font-bold">Date</TableHead>
-              <TableHead className="font-bold">Payment Method</TableHead>
-              <TableHead className="font-bold">Amount</TableHead>
-              <TableHead className="font-bold">Status</TableHead>
-              <TableHead className="text-right font-bold">Actions</TableHead>
+            <TableRow className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 dark:from-blue-900 dark:via-blue-800 dark:to-blue-900 border-b-0">
+              <TableHead className="font-bold text-white">Receipt Number</TableHead>
+              <TableHead className="font-bold text-white">Invoice</TableHead>
+              <TableHead className="font-bold text-white">Customer</TableHead>
+              <TableHead className="font-bold text-white">Date</TableHead>
+              <TableHead className="font-bold text-white">Payment Method</TableHead>
+              <TableHead className="font-bold text-white">Amount</TableHead>
+              <TableHead className="font-bold text-white">Status</TableHead>
+              <TableHead className="text-right font-bold text-white">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -235,6 +311,27 @@ export default function ReceiptsPage() {
                           <Edit className="h-4 w-4" />
                         </Button>
                       )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" title="Export">
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleExportReceipt(receipt.id, 'excel')}>
+                            <FileSpreadsheet className="mr-2 h-4 w-4" />
+                            Excel
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleExportReceipt(receipt.id, 'word')}>
+                            <FileText className="mr-2 h-4 w-4" />
+                            Word
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleExportReceipt(receipt.id, 'pdf')}>
+                            <File className="mr-2 h-4 w-4" />
+                            PDF
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                       {canDelete('receipts') && (
                         <Button
                           variant="ghost"

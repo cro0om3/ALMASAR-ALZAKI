@@ -12,28 +12,60 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Plus, Search, Edit, Trash2, Eye, Users } from "lucide-react"
-import { customerService } from "@/lib/data"
+import { Plus, Search, Edit, Trash2, Eye, Users, Download, FileSpreadsheet, FileText, File } from "lucide-react"
 import { Customer } from "@/types"
 import { useRouter } from "next/navigation"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { Card } from "@/components/ui/card"
 import { usePermissions } from "@/lib/hooks/use-permissions"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { exportCustomerToExcel, exportCustomerToWord, exportCustomerToPDF } from "@/lib/utils/export-utils"
+import { useToast } from "@/lib/hooks/use-toast"
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
   const { canEdit, canDelete } = usePermissions()
+  const { toast } = useToast()
 
   useEffect(() => {
-    setCustomers(customerService.getAll())
+    loadCustomers()
   }, [])
 
-  const handleDelete = (id: string) => {
+  const loadCustomers = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/customers')
+      if (!response.ok) throw new Error('Failed to load customers')
+      const data = await response.json()
+      setCustomers(data)
+    } catch (error: any) {
+      console.error('Error loading customers:', error)
+      setCustomers([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this customer?")) {
-      customerService.delete(id)
-      setCustomers(customerService.getAll())
+      try {
+        const response = await fetch(`/api/customers/${id}`, {
+          method: 'DELETE',
+        })
+        if (!response.ok) throw new Error('Failed to delete customer')
+        await loadCustomers() // Reload from API
+      } catch (error: any) {
+        console.error('Error deleting customer:', error)
+        alert('Failed to delete customer. Please try again.')
+      }
     }
   }
 
@@ -42,6 +74,52 @@ export default function CustomersPage() {
     c.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.phone.includes(searchTerm)
   )
+
+  const handleExportCustomer = (customer: Customer, type: 'excel' | 'word' | 'pdf') => {
+    try {
+      const filename = `Customer_${customer.name || customer.id}_${new Date().toISOString().split('T')[0]}`
+      const customerData = {
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+        address: customer.address,
+        city: customer.city,
+        state: customer.state,
+        zipCode: customer.zipCode,
+        country: customer.country,
+      }
+      
+      switch (type) {
+        case 'excel':
+          exportCustomerToExcel(customerData, filename)
+          toast({
+            title: "Export Successful",
+            description: "Customer exported to Excel successfully",
+          })
+          break
+        case 'word':
+          exportCustomerToWord(customerData, filename)
+          toast({
+            title: "Export Successful",
+            description: "Customer exported to Word successfully",
+          })
+          break
+        case 'pdf':
+          exportCustomerToPDF(customerData, filename)
+          toast({
+            title: "Export Successful",
+            description: "Customer exported to PDF successfully",
+          })
+          break
+      }
+    } catch (error) {
+      toast({
+        title: "Export Failed",
+        description: "Failed to export customer. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -62,19 +140,28 @@ export default function CustomersPage() {
         />
       </div>
 
-      <Card className="border-2 border-blue-200/60 shadow-card overflow-hidden">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-900/50 dark:to-blue-800/50 border-b-2 border-blue-200 dark:border-blue-800">
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Name</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Email</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Phone</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Address</TableHead>
-              <TableHead className="text-right font-bold text-blue-900 dark:text-blue-100">Actions</TableHead>
+            <TableRow className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 dark:from-blue-900 dark:via-blue-800 dark:to-blue-900 border-b-0">
+              <TableHead className="font-bold text-white">Name</TableHead>
+              <TableHead className="font-bold text-white">Email</TableHead>
+              <TableHead className="font-bold text-white">Phone</TableHead>
+              <TableHead className="font-bold text-white">Address</TableHead>
+              <TableHead className="text-right font-bold text-white">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredCustomers.length === 0 ? (
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-16">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <p className="text-gray-500 dark:text-gray-300 font-medium">Loading customers...</p>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : filteredCustomers.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-16">
                   <div className="flex flex-col items-center gap-3">
@@ -100,6 +187,7 @@ export default function CustomersPage() {
                         size="icon"
                         onClick={() => router.push(`/customers/${customer.id}`)}
                         className="hover:bg-blue-100 hover:text-blue-700"
+                        title="View Details"
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
@@ -109,16 +197,44 @@ export default function CustomersPage() {
                           size="icon"
                           onClick={() => router.push(`/customers/${customer.id}/edit`)}
                           className="hover:bg-blue-100 hover:text-blue-700"
+                          title="Edit"
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
                       )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="hover:bg-green-100 hover:text-green-700"
+                            title="Export"
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem onClick={() => handleExportCustomer(customer, 'excel')}>
+                            <FileSpreadsheet className="mr-2 h-4 w-4" />
+                            Export to Excel
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleExportCustomer(customer, 'word')}>
+                            <FileText className="mr-2 h-4 w-4" />
+                            Export to Word
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleExportCustomer(customer, 'pdf')}>
+                            <File className="mr-2 h-4 w-4" />
+                            Export to PDF
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                       {canDelete('customers') && (
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={() => handleDelete(customer.id)}
                           className="hover:bg-red-100 hover:text-red-600"
+                          title="Delete"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

@@ -6,8 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Edit, ArrowLeft, Download, CheckCircle } from "lucide-react"
-import { payslipService } from "@/lib/data"
-import { employeeService } from "@/lib/data"
 import { Payslip, PaymentMethod } from "@/types"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { usePermissions } from "@/lib/hooks/use-permissions"
@@ -17,16 +15,44 @@ export default function PayslipDetailPage() {
   const router = useRouter()
   const { canEdit } = usePermissions()
   const [payslip, setPayslip] = useState<Payslip | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const id = params.id as string
-    const p = payslipService.getById(id)
-    if (p) {
-      const employee = employeeService.getById(p.employeeId)
-      setPayslip({ ...p, employee })
+    if (!id) {
+      setLoading(false)
+      return
     }
+    let cancelled = false
+    setLoading(true)
+    const load = async () => {
+      try {
+        const [pRes, employeesRes] = await Promise.all([
+          fetch(`/api/payslips/${id}`),
+          fetch('/api/employees'),
+        ])
+        if (cancelled) return
+        const p = pRes.ok ? await pRes.json() : null
+        const employees = employeesRes.ok ? await employeesRes.json() : []
+        if (p) {
+          const employee = (employees || []).find((e: any) => e.id === p.employeeId)
+          setPayslip({ ...p, employee })
+        } else setPayslip(null)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
   }, [params.id])
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    )
+  }
   if (!payslip) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -46,16 +72,23 @@ export default function PayslipDetailPage() {
     }
   }
 
-  const handleMarkAsPaid = () => {
-    if (confirm("Mark this payslip as paid?")) {
-      const updated = payslipService.update(payslip.id, {
-        status: 'paid',
-        paymentDate: new Date().toISOString().split('T')[0],
+  const handleMarkAsPaid = async () => {
+    if (!confirm("Mark this payslip as paid?")) return
+    try {
+      const res = await fetch(`/api/payslips/${payslip.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'paid',
+          paymentDate: new Date().toISOString().split('T')[0],
+        }),
       })
-      if (updated) {
-        const employee = employeeService.getById(updated.employeeId)
-        setPayslip({ ...updated, employee })
-      }
+      if (!res.ok) throw new Error('Failed to update')
+      const updated = await res.json()
+      setPayslip({ ...updated, employee: payslip.employee })
+    } catch (e) {
+      console.error(e)
+      alert('Failed to update payslip')
     }
   }
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { userService } from '@/lib/data/user-service'
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -13,9 +13,12 @@ export async function GET(
         { status: 404 }
       )
     }
-    // Don't return hashed PIN code
     const { pinCode, ...safeUser } = user
-    return NextResponse.json(safeUser)
+    return NextResponse.json({
+      ...safeUser,
+      createdAt: user.createdAt instanceof Date ? user.createdAt.toISOString() : user.createdAt,
+      updatedAt: user.updatedAt instanceof Date ? user.updatedAt.toISOString() : user.updatedAt,
+    })
   } catch (error: any) {
     return NextResponse.json(
       { error: 'Failed to fetch user', details: error.message },
@@ -31,10 +34,12 @@ export async function PUT(
   try {
     const body = await request.json()
     const user = await userService.update(params.id, body)
-    
-    // Don't return hashed PIN code
     const { pinCode, ...safeUser } = user
-    return NextResponse.json(safeUser)
+    return NextResponse.json({
+      ...safeUser,
+      createdAt: user.createdAt instanceof Date ? user.createdAt.toISOString() : user.createdAt,
+      updatedAt: user.updatedAt instanceof Date ? user.updatedAt.toISOString() : user.updatedAt,
+    })
   } catch (error: any) {
     return NextResponse.json(
       { error: 'Failed to update user', details: error.message },
@@ -44,7 +49,7 @@ export async function PUT(
 }
 
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {

@@ -1,11 +1,11 @@
-import { prisma } from '@/lib/prisma'
+import { createServerClient } from '@/lib/supabase-server'
 import bcrypt from 'bcryptjs'
 
 export interface User {
   id: string
   email: string
   name: string
-  pinCode: string // hashed
+  pinCode: string // hashed (stored as password in DB)
   role: 'admin' | 'user' | 'manager'
   createdAt: Date
   updatedAt: Date
@@ -25,189 +25,106 @@ export interface UpdateUserInput {
   role?: 'admin' | 'user' | 'manager'
 }
 
-// Helper to check if Prisma is available
-const checkPrisma = () => {
-  if (!prisma) {
-    throw new Error('Prisma is not set up. Please run: npx prisma generate')
-  }
-}
-
-// Hash PIN code
 async function hashPinCode(pinCode: string): Promise<string> {
   return bcrypt.hash(pinCode, 10)
 }
 
-// Verify PIN code
-async function verifyPinCode(pinCode: string, hashedPinCode: string): Promise<boolean> {
+async function verifyPinCodePlain(pinCode: string, hashedPinCode: string): Promise<boolean> {
   return bcrypt.compare(pinCode, hashedPinCode)
 }
 
+function rowToUser(row: any): User {
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    pinCode: row.password,
+    role: (row.role || 'user') as 'admin' | 'user' | 'manager',
+    createdAt: typeof row.createdAt === 'string' ? new Date(row.createdAt) : row.createdAt,
+    updatedAt: typeof row.updatedAt === 'string' ? new Date(row.updatedAt) : row.updatedAt,
+  }
+}
+
 export const userService = {
-  // Get all users
   getAll: async (): Promise<User[]> => {
-    checkPrisma()
-    return await prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        password: true, // This is the hashed PIN
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    }) as any[]
+    const supabase = createServerClient()
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .order('createdAt', { ascending: false })
+    if (error) throw new Error(error.message)
+    return (data || []).map(rowToUser)
   },
 
-  // Get user by ID
   getById: async (id: string): Promise<User | null> => {
-    checkPrisma()
-    const user = await prisma.user.findUnique({ where: { id } })
-    if (!user) return null
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      pinCode: user.password, // hashed
-      role: user.role as 'admin' | 'user' | 'manager',
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    }
+    const supabase = createServerClient()
+    const { data, error } = await supabase.from('users').select('*').eq('id', id).single()
+    if (error || !data) return null
+    return rowToUser(data)
   },
 
-  // Get user by email
   getByEmail: async (email: string): Promise<User | null> => {
-    checkPrisma()
-    const user = await prisma.user.findUnique({ where: { email } })
-    if (!user) return null
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      pinCode: user.password, // hashed
-      role: user.role as 'admin' | 'user' | 'manager',
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    }
+    const supabase = createServerClient()
+    const { data, error } = await supabase.from('users').select('*').eq('email', email).single()
+    if (error || !data) return null
+    return rowToUser(data)
   },
 
-  // Verify PIN code (search all users and find matching PIN)
   verifyPinCode: async (pinCode: string): Promise<User | null> => {
-    try {
-      checkPrisma()
-      
-      // Test connection first with timeout
-      await Promise.race([
-        prisma.$connect(),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Connection timeout after 10 seconds')), 10000)
-        )
-      ])
-      
-      // Get all users with timeout
-      const users = await Promise.race([
-        prisma.user.findMany(),
-        new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('Query timeout after 10 seconds')), 10000)
-        )
-      ])
-      
-      if (users.length === 0) {
-        return null
+    const supabase = createServerClient()
+    const { data: users, error } = await supabase.from('users').select('*').limit(100)
+    if (error || !users || users.length === 0) return null
+    for (const user of users) {
+      if (!user.password) continue
+      try {
+        const isValid = await verifyPinCodePlain(pinCode, user.password)
+        if (isValid) return rowToUser(user)
+      } catch {
+        continue
       }
-      
-      // Try to find user with matching PIN code
-      for (const user of users) {
-        if (!user.password) {
-          continue
-        }
-        
-        try {
-          const isValid = await verifyPinCode(pinCode, user.password)
-          if (isValid) {
-            return {
-              id: user.id,
-              email: user.email,
-              name: user.name,
-              pinCode: user.password,
-              role: user.role as 'admin' | 'user' | 'manager',
-              createdAt: user.createdAt,
-              updatedAt: user.updatedAt,
-            }
-          }
-        } catch (err) {
-          // Skip invalid password hashes
-          continue
-        }
-      }
-      
-      return null
-    } catch (error: any) {
-      console.error('Error verifying PIN code:', error)
-      
-      // More specific error messages
-      if (error.message?.includes('Can\'t reach database server') || 
-          error.message?.includes('Connection timeout')) {
-        throw new Error(`Database connection failed. Please check DATABASE_URL in Vercel Environment Variables. Error: ${error.message}`)
-      }
-      
-      throw new Error(`Failed to verify PIN code: ${error.message}`)
     }
+    return null
   },
 
-  // Create user
   create: async (data: CreateUserInput): Promise<User> => {
-    checkPrisma()
-    const hashedPinCode = await hashPinCode(data.pinCode)
-    const user = await prisma.user.create({
-      data: {
-        email: data.email,
-        name: data.name,
-        password: hashedPinCode,
-        role: data.role,
-      },
-    })
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      pinCode: user.password,
-      role: user.role as 'admin' | 'user' | 'manager',
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
+    const supabase = createServerClient()
+    const hashedPin = await hashPinCode(data.pinCode)
+    const now = new Date().toISOString()
+    const id = `usr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const row = {
+      id,
+      email: data.email,
+      name: data.name,
+      password: hashedPin,
+      role: data.role,
+      createdAt: now,
+      updatedAt: now,
     }
+    const { data: inserted, error } = await supabase.from('users').insert(row).select().single()
+    if (error) throw new Error(error.message)
+    return rowToUser(inserted)
   },
 
-  // Update user
   update: async (id: string, data: UpdateUserInput): Promise<User> => {
-    checkPrisma()
-    const updateData: any = {}
-    if (data.email) updateData.email = data.email
-    if (data.name) updateData.name = data.name
-    if (data.role) updateData.role = data.role
-    if (data.pinCode) {
-      updateData.password = await hashPinCode(data.pinCode)
-    }
-
-    const user = await prisma.user.update({
-      where: { id },
-      data: updateData,
-    })
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      pinCode: user.password,
-      role: user.role as 'admin' | 'user' | 'manager',
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    }
+    const supabase = createServerClient()
+    const update: Record<string, unknown> = { updatedAt: new Date().toISOString() }
+    if (data.email != null) update.email = data.email
+    if (data.name != null) update.name = data.name
+    if (data.role != null) update.role = data.role
+    if (data.pinCode) update.password = await hashPinCode(data.pinCode)
+    const { data: updated, error } = await supabase
+      .from('users')
+      .update(update)
+      .eq('id', id)
+      .select()
+      .single()
+    if (error) throw new Error(error.message)
+    return rowToUser(updated)
   },
 
-  // Delete user
   delete: async (id: string): Promise<void> => {
-    checkPrisma()
-    await prisma.user.delete({ where: { id } })
+    const supabase = createServerClient()
+    const { error } = await supabase.from('users').delete().eq('id', id)
+    if (error) throw new Error(error.message)
   },
 }

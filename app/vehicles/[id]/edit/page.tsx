@@ -16,20 +16,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { vehicleService } from "@/lib/data"
 import { Vehicle } from "@/types"
 
 const vehicleSchema = z.object({
-  make: z.string().min(1, "Make is required"),
-  model: z.string().min(1, "Model is required"),
-  year: z.number().min(1900).max(new Date().getFullYear() + 1),
-  licensePlate: z.string().min(1, "License plate is required"),
-  vin: z.string().min(1, "VIN is required"),
-  color: z.string().min(1, "Color is required"),
-  mileage: z.number().min(0),
-  purchaseDate: z.string().min(1, "Purchase date is required"),
-  purchasePrice: z.number().min(0),
-  status: z.enum(["active", "maintenance", "retired"]),
+  make: z.string().optional(),
+  model: z.string().optional(),
+  year: z.number().min(1900).max(new Date().getFullYear() + 1).optional(),
+  licensePlate: z.string().optional(),
+  vin: z.string().optional(),
+  color: z.string().optional(),
+  mileage: z.number().min(0).optional(),
+  purchaseDate: z.string().optional(),
+  purchasePrice: z.number().min(0).optional(),
+  status: z.enum(["active", "maintenance", "retired"]).optional(),
   notes: z.string().optional(),
 })
 
@@ -39,6 +38,8 @@ export default function EditVehiclePage() {
   const params = useParams()
   const router = useRouter()
   const [vehicle, setVehicle] = useState<Vehicle | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
 
   const {
     register,
@@ -53,27 +54,48 @@ export default function EditVehiclePage() {
 
   useEffect(() => {
     const id = params.id as string
-    const v = vehicleService.getById(id)
-    if (v) {
-      setVehicle(v)
-      reset({
-        ...v,
-        purchaseDate: v.purchaseDate.split("T")[0],
+    if (!id) return
+    let cancelled = false
+    setLoading(true)
+    fetch(`/api/vehicles/${id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((v) => {
+        if (!cancelled && v) {
+          setVehicle(v)
+          reset({
+            ...v,
+            purchaseDate: typeof v.purchaseDate === 'string' && v.purchaseDate.includes('T') ? v.purchaseDate.split('T')[0] : v.purchaseDate,
+          })
+        }
       })
-    }
+      .catch(() => { if (!cancelled) setVehicle(null) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [params.id, reset])
 
-  const onSubmit = (data: VehicleFormData) => {
-    if (vehicle) {
-      vehicleService.update(vehicle.id, data)
+  const onSubmit = async (data: VehicleFormData) => {
+    if (!vehicle) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/vehicles/${vehicle.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error('Failed to update vehicle')
       router.push(`/vehicles/${vehicle.id}`)
+    } catch (e) {
+      console.error(e)
+      alert('Failed to update vehicle.')
+    } finally {
+      setSaving(false)
     }
   }
 
-  if (!vehicle) {
+  if (loading || !vehicle) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Loading...</p>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
       </div>
     )
   }
@@ -88,7 +110,7 @@ export default function EditVehiclePage() {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="make">Make *</Label>
+            <Label htmlFor="make">Make</Label>
             <Input id="make" {...register("make")} />
             {errors.make && (
               <p className="text-sm text-destructive">{errors.make.message}</p>
@@ -96,7 +118,7 @@ export default function EditVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="model">Model *</Label>
+            <Label htmlFor="model">Model</Label>
             <Input id="model" {...register("model")} />
             {errors.model && (
               <p className="text-sm text-destructive">{errors.model.message}</p>
@@ -104,7 +126,7 @@ export default function EditVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="year">Year *</Label>
+            <Label htmlFor="year">Year</Label>
             <Input
               id="year"
               type="number"
@@ -116,7 +138,7 @@ export default function EditVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="licensePlate">License Plate *</Label>
+            <Label htmlFor="licensePlate">License Plate</Label>
             <Input id="licensePlate" {...register("licensePlate")} />
             {errors.licensePlate && (
               <p className="text-sm text-destructive">{errors.licensePlate.message}</p>
@@ -124,7 +146,7 @@ export default function EditVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="vin">VIN *</Label>
+            <Label htmlFor="vin">VIN</Label>
             <Input id="vin" {...register("vin")} />
             {errors.vin && (
               <p className="text-sm text-destructive">{errors.vin.message}</p>
@@ -132,7 +154,7 @@ export default function EditVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="color">Color *</Label>
+            <Label htmlFor="color">Color</Label>
             <Input id="color" {...register("color")} />
             {errors.color && (
               <p className="text-sm text-destructive">{errors.color.message}</p>
@@ -140,7 +162,7 @@ export default function EditVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="mileage">Mileage *</Label>
+            <Label htmlFor="mileage">Mileage</Label>
             <Input
               id="mileage"
               type="number"
@@ -152,7 +174,7 @@ export default function EditVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="purchaseDate">Purchase Date *</Label>
+            <Label htmlFor="purchaseDate">Purchase Date</Label>
             <Input id="purchaseDate" type="date" {...register("purchaseDate")} />
             {errors.purchaseDate && (
               <p className="text-sm text-destructive">{errors.purchaseDate.message}</p>
@@ -160,7 +182,7 @@ export default function EditVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="purchasePrice">Purchase Price *</Label>
+            <Label htmlFor="purchasePrice">Purchase Price</Label>
             <Input
               id="purchasePrice"
               type="number"
@@ -173,7 +195,7 @@ export default function EditVehiclePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="status">Status *</Label>
+            <Label htmlFor="status">Status</Label>
             <Select
               value={watch("status")}
               onValueChange={(value) => setValue("status", value as any)}
@@ -207,9 +229,10 @@ export default function EditVehiclePage() {
           <Button 
             type="submit"
             variant="gold"
+            disabled={saving}
             className="bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-blue-900 hover:from-yellow-500 hover:via-yellow-600 hover:to-yellow-700 shadow-gold hover:shadow-xl font-bold border-2 border-yellow-300/50 px-8 py-3"
           >
-            Update Vehicle
+            {saving ? 'Saving...' : 'Update Vehicle'}
           </Button>
         </div>
       </form>

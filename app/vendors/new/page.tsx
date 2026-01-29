@@ -7,18 +7,17 @@ import * as z from "zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { vendorService } from "@/lib/data"
 
 const vendorSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email address"),
-  phone: z.string().min(1, "Phone is required"),
-  address: z.string().min(1, "Address is required"),
-  city: z.string().min(1, "City is required"),
-  state: z.string().min(1, "State is required"),
-  zipCode: z.string().min(1, "Zip code is required"),
-  country: z.string().min(1, "Country is required"),
-  contactPerson: z.string().min(1, "Contact person is required"),
+  name: z.string().optional(),
+  email: z.string().email("Invalid email address").optional().or(z.literal("")),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
+  country: z.string().optional(),
+  contactPerson: z.string().optional(),
   // Identity and residence fields (optional)
   idNumber: z.string().optional(),
   passportNumber: z.string().optional(),
@@ -39,9 +38,22 @@ export default function NewVendorPage() {
     resolver: zodResolver(vendorSchema),
   })
 
-  const onSubmit = (data: VendorFormData) => {
-    vendorService.create(data)
-    router.push("/vendors")
+  const onSubmit = async (data: VendorFormData) => {
+    try {
+      const response = await fetch('/api/vendors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to create vendor')
+      }
+      router.push("/vendors")
+    } catch (error: any) {
+      console.error('Error creating vendor:', error)
+      alert('Failed to create vendor. Please try again.')
+    }
   }
 
   return (
@@ -58,7 +70,7 @@ export default function NewVendorPage() {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="name">Name *</Label>
+            <Label htmlFor="name">Name</Label>
             <Input id="name" {...register("name")} />
             {errors.name && (
               <p className="text-sm text-destructive">{errors.name.message}</p>
@@ -66,7 +78,7 @@ export default function NewVendorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="email">Email *</Label>
+            <Label htmlFor="email">Email</Label>
             <Input id="email" type="email" {...register("email")} />
             {errors.email && (
               <p className="text-sm text-destructive">{errors.email.message}</p>
@@ -74,7 +86,7 @@ export default function NewVendorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="phone">Phone *</Label>
+            <Label htmlFor="phone">Phone</Label>
             <Input id="phone" {...register("phone")} />
             {errors.phone && (
               <p className="text-sm text-destructive">{errors.phone.message}</p>
@@ -82,7 +94,7 @@ export default function NewVendorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="contactPerson">Contact Person *</Label>
+            <Label htmlFor="contactPerson">Contact Person</Label>
             <Input id="contactPerson" {...register("contactPerson")} />
             {errors.contactPerson && (
               <p className="text-sm text-destructive">{errors.contactPerson.message}</p>
@@ -90,7 +102,7 @@ export default function NewVendorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="address">Address *</Label>
+            <Label htmlFor="address">Address</Label>
             <Input id="address" {...register("address")} />
             {errors.address && (
               <p className="text-sm text-destructive">{errors.address.message}</p>
@@ -98,7 +110,7 @@ export default function NewVendorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="city">City *</Label>
+            <Label htmlFor="city">City</Label>
             <Input id="city" {...register("city")} />
             {errors.city && (
               <p className="text-sm text-destructive">{errors.city.message}</p>
@@ -106,7 +118,7 @@ export default function NewVendorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="state">State *</Label>
+            <Label htmlFor="state">State</Label>
             <Input id="state" {...register("state")} />
             {errors.state && (
               <p className="text-sm text-destructive">{errors.state.message}</p>
@@ -114,7 +126,7 @@ export default function NewVendorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="zipCode">Zip Code *</Label>
+            <Label htmlFor="zipCode">Zip Code</Label>
             <Input id="zipCode" {...register("zipCode")} />
             {errors.zipCode && (
               <p className="text-sm text-destructive">{errors.zipCode.message}</p>
@@ -122,7 +134,7 @@ export default function NewVendorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="country">Country *</Label>
+            <Label htmlFor="country">Country</Label>
             <Input id="country" {...register("country")} />
             {errors.country && (
               <p className="text-sm text-destructive">{errors.country.message}</p>
@@ -130,7 +142,7 @@ export default function NewVendorPage() {
           </div>
         </div>
 
-        <div className="border-2 border-blue-200/60 p-6 rounded-lg">
+        <div className="border-2 border-blue-400 dark:border-blue-800/60 p-6 rounded-lg">
           <h2 className="text-xl font-semibold text-blue-900 mb-4 flex items-center gap-2">
             <span className="w-1 h-6 bg-gold rounded"></span>
             Identity & Residence Information

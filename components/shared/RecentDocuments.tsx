@@ -7,8 +7,6 @@ import { Badge } from "@/components/ui/badge"
 import { FileText, Receipt, ShoppingCart, Clock, ArrowRight } from "lucide-react"
 import Link from "next/link"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { quotationService, invoiceService, purchaseOrderService } from "@/lib/data"
-
 interface RecentDocument {
   id: string
   type: 'quotation' | 'invoice' | 'purchase_order'
@@ -24,14 +22,20 @@ export function RecentDocuments({ limit = 5 }: { limit?: number }) {
   const [documents, setDocuments] = useState<RecentDocument[]>([])
 
   useEffect(() => {
-    const loadDocuments = () => {
-      const docs: RecentDocument[] = []
-
-      // Get recent quotations
-      quotationService.getAll()
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, limit)
-        .forEach(q => {
+    let cancelled = false
+    const loadDocuments = async () => {
+      try {
+        const [qRes, invRes, poRes] = await Promise.all([
+          fetch('/api/quotations'),
+          fetch('/api/invoices'),
+          fetch('/api/purchase-orders'),
+        ])
+        if (cancelled) return
+        const quotations = (qRes.ok ? await qRes.json() : []).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, limit)
+        const invoices = (invRes.ok ? await invRes.json() : []).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, limit)
+        const purchaseOrders = (poRes.ok ? await poRes.json() : []).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, limit)
+        const docs: RecentDocument[] = []
+        quotations.forEach((q: any) => {
           docs.push({
             id: q.id,
             type: 'quotation',
@@ -42,12 +46,7 @@ export function RecentDocuments({ limit = 5 }: { limit?: number }) {
             link: `/quotations/${q.id}`,
           })
         })
-
-      // Get recent invoices
-      invoiceService.getAll()
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, limit)
-        .forEach(inv => {
+        invoices.forEach((inv: any) => {
           docs.push({
             id: inv.id,
             type: 'invoice',
@@ -58,12 +57,7 @@ export function RecentDocuments({ limit = 5 }: { limit?: number }) {
             link: `/invoices/${inv.id}`,
           })
         })
-
-      // Get recent purchase orders
-      purchaseOrderService.getAll()
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, limit)
-        .forEach(po => {
+        purchaseOrders.forEach((po: any) => {
           docs.push({
             id: po.id,
             type: 'purchase_order',
@@ -74,13 +68,14 @@ export function RecentDocuments({ limit = 5 }: { limit?: number }) {
             link: `/purchase-orders/${po.id}`,
           })
         })
-
-      // Sort by date and take most recent
-      docs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      setDocuments(docs.slice(0, limit))
+        docs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        if (!cancelled) setDocuments(docs.slice(0, limit))
+      } catch (_e) {
+        if (!cancelled) setDocuments([])
+      }
     }
-
     loadDocuments()
+    return () => { cancelled = true }
   }, [limit])
 
   const getIcon = (type: RecentDocument['type']) => {
@@ -109,7 +104,7 @@ export function RecentDocuments({ limit = 5 }: { limit?: number }) {
 
   if (documents.length === 0) {
     return (
-      <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card">
         <CardHeader>
           <CardTitle className="text-lg font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2">
             <Clock className="h-5 w-5 text-gold dark:text-yellow-400" />
@@ -126,7 +121,7 @@ export function RecentDocuments({ limit = 5 }: { limit?: number }) {
   }
 
   return (
-    <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
+    <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
       <CardHeader>
         <CardTitle className="text-lg font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2">
           <Clock className="h-5 w-5 text-gold dark:text-yellow-400" />

@@ -25,26 +25,24 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Plus, Trash2 } from "lucide-react"
-import { invoiceService, customerService } from "@/lib/data"
 import { Invoice, InvoiceItem } from "@/types"
 import { formatCurrency } from "@/lib/utils"
 
 const invoiceSchema = z.object({
-  customerId: z.string().min(1, "Customer is required"),
-  date: z.string().min(1, "Date is required"),
-  dueDate: z.string().min(1, "Due date is required"),
+  customerId: z.string().optional(),
+  date: z.string().optional(),
+  dueDate: z.string().optional(),
   items: z.array(
     z.object({
-      description: z.string().min(1, "Description is required"),
-      quantity: z.number().min(0.01, "Quantity must be greater than 0"),
-      unitPrice: z.number().min(0, "Unit price must be 0 or greater"),
-      discount: z.number().min(0).max(100),
-      tax: z.number().min(0).max(100),
+      description: z.string().optional(),
+      quantity: z.number().min(0.01, "Quantity must be greater than 0").optional(),
+      unitPrice: z.number().min(0, "Unit price must be 0 or greater").optional(),
+      tax: z.number().min(0).max(100).optional(),
     })
-  ).min(1, "At least one item is required"),
-  taxRate: z.number().min(0).max(100),
-  paidAmount: z.number().min(0),
-  status: z.enum(["draft", "sent", "paid", "overdue", "cancelled"]),
+  ).optional(),
+  taxRate: z.number().min(0).max(100).optional(),
+  paidAmount: z.number().min(0).optional(),
+  status: z.enum(["draft", "sent", "paid", "overdue", "cancelled"]).optional(),
   terms: z.string().optional(),
   notes: z.string().optional(),
 })
@@ -59,6 +57,8 @@ export default function EditInvoicePage() {
   const [subtotal, setSubtotal] = useState(0)
   const [taxAmount, setTaxAmount] = useState(0)
   const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
 
   const {
     register,
@@ -84,30 +84,49 @@ export default function EditInvoicePage() {
   })
 
   useEffect(() => {
-    setCustomers(customerService.getAll())
-    
     const id = params.id as string
-    const inv = invoiceService.getById(id)
-    if (inv) {
-      setInvoice(inv)
-      reset({
-        customerId: inv.customerId,
-        date: inv.date.split("T")[0],
-        dueDate: inv.dueDate.split("T")[0],
-        items: inv.items.map(item => ({
-          description: item.description,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          discount: item.discount,
-          tax: item.tax,
-        })),
-        taxRate: inv.taxRate,
-        paidAmount: inv.paidAmount,
-        status: inv.status,
-        terms: inv.terms,
-        notes: inv.notes,
-      })
+    if (!id) {
+      setLoading(false)
+      return
     }
+    let cancelled = false
+    setLoading(true)
+    const load = async () => {
+      try {
+        const [invRes, custRes] = await Promise.all([
+          fetch(`/api/invoices/${id}`),
+          fetch('/api/customers'),
+        ])
+        if (cancelled) return
+        const inv = invRes.ok ? await invRes.json() : null
+        const customersList = custRes.ok ? await custRes.json() : []
+        if (!cancelled) setCustomers(customersList || [])
+        if (inv) {
+          setInvoice(inv)
+          const dateStr = (d: string) => (d && d.includes('T') ? d.split('T')[0] : d)
+          reset({
+            customerId: inv.customerId,
+            date: dateStr(inv.date),
+            dueDate: dateStr(inv.dueDate),
+            items: (inv.items || []).map((item: any) => ({
+              description: item.description,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              tax: item.tax,
+            })),
+            taxRate: inv.taxRate,
+            paidAmount: inv.paidAmount,
+            status: inv.status,
+            terms: inv.terms,
+            notes: inv.notes,
+          })
+        } else setInvoice(null)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
   }, [params.id, reset])
 
   const watchedItems = watch("items")
@@ -122,9 +141,7 @@ export default function EditInvoicePage() {
     watchedItems.forEach((item) => {
       if (!item) return
       const itemTotal = (item.quantity || 0) * (item.unitPrice || 0)
-      const discountAmount = (itemTotal * (item.discount || 0)) / 100
-      const afterDiscount = itemTotal - discountAmount
-      sub += afterDiscount
+      sub += itemTotal
     })
     setSubtotal(sub)
     const tax = (sub * (watchedTaxRate || 0)) / 100
@@ -133,49 +150,70 @@ export default function EditInvoicePage() {
   }, [watchedItems, watchedTaxRate])
 
   const addItem = () => {
-    append({ description: "", quantity: 1, unitPrice: 0, discount: 0, tax: 0 })
+    append({ description: "", quantity: 1, unitPrice: 0, tax: 0 })
   }
 
-  const onSubmit = (data: InvoiceFormData) => {
-    if (invoice) {
-      const items: InvoiceItem[] = data.items.map((item, index) => {
-        const itemTotal = item.quantity * item.unitPrice
-        const discountAmount = (itemTotal * item.discount) / 100
-        const afterDiscount = itemTotal - discountAmount
-        const itemTax = (afterDiscount * item.tax) / 100
+  const onSubmit = async (data: InvoiceFormData) => {
+    if (!invoice) return
+    setSaving(true)
+    try {
+      const taxRate = data.taxRate ?? 5
+      const items: InvoiceItem[] = (data.items || []).map((item, index) => {
+        const qty = item.quantity ?? 0
+        const price = item.unitPrice ?? 0
+        const itemTotal = qty * price
+        const itemTax = (itemTotal * taxRate) / 100
         return {
           id: `item-${index}`,
-          description: item.description,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          discount: item.discount,
-          tax: item.tax,
-          total: afterDiscount + itemTax,
+          description: item.description ?? '',
+          quantity: qty,
+          unitPrice: price,
+          tax: taxRate,
+          total: itemTotal + itemTax,
         }
       })
-
-      invoiceService.update(invoice.id, {
-        customerId: data.customerId,
-        date: data.date,
-        dueDate: data.dueDate,
-        items,
-        subtotal,
-        taxRate: data.taxRate,
-        taxAmount,
-        total,
-        paidAmount: data.paidAmount,
-        status: data.status,
-        terms: data.terms || "",
-        notes: data.notes || "",
+      const res = await fetch(`/api/invoices/${invoice.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId: data.customerId,
+          date: data.date,
+          dueDate: data.dueDate,
+          items,
+          subtotal,
+          taxRate: data.taxRate,
+          taxAmount,
+          total,
+          paidAmount: data.paidAmount,
+          status: data.status,
+          terms: data.terms || "",
+          notes: data.notes || "",
+        }),
       })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to update invoice')
+      }
       router.push(`/invoices/${invoice.id}`)
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.message || 'Failed to update invoice')
+    } finally {
+      setSaving(false)
     }
   }
 
-  if (!invoice) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <p className="text-muted-foreground">Loading...</p>
+      </div>
+    )
+  }
+  if (!invoice) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Invoice not found</p>
       </div>
     )
   }
@@ -190,7 +228,7 @@ export default function EditInvoicePage() {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="customerId">Customer *</Label>
+            <Label htmlFor="customerId">Customer</Label>
             <Select
               value={watch("customerId")}
               onValueChange={(value) => setValue("customerId", value)}
@@ -212,7 +250,7 @@ export default function EditInvoicePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="date">Date *</Label>
+            <Label htmlFor="date">Date</Label>
             <Input type="date" {...register("date")} />
             {errors.date && (
               <p className="text-sm text-destructive">{errors.date.message}</p>
@@ -220,7 +258,7 @@ export default function EditInvoicePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="dueDate">Due Date *</Label>
+            <Label htmlFor="dueDate">Due Date</Label>
             <Input type="date" {...register("dueDate")} />
             {errors.dueDate && (
               <p className="text-sm text-destructive">{errors.dueDate.message}</p>
@@ -267,7 +305,7 @@ export default function EditInvoicePage() {
 
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <Label>Items *</Label>
+            <Label>Items</Label>
             <Button type="button" variant="outline" size="sm" onClick={addItem}>
               <Plus className="mr-2 h-4 w-4" />
               Add Item
@@ -277,14 +315,12 @@ export default function EditInvoicePage() {
           <div className="rounded-md border">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Quantity</TableHead>
-                  <TableHead>Unit Price</TableHead>
-                  <TableHead>Discount %</TableHead>
-                  <TableHead>Tax %</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead></TableHead>
+                <TableRow className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 dark:from-blue-900 dark:via-blue-800 dark:to-blue-900 border-b-0">
+                  <TableHead className="font-bold text-white">Description</TableHead>
+                  <TableHead className="font-bold text-white">Quantity</TableHead>
+                  <TableHead className="font-bold text-white">Unit Price</TableHead>
+                  <TableHead className="font-bold text-white">Total</TableHead>
+                  <TableHead className="font-bold text-white"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -293,10 +329,8 @@ export default function EditInvoicePage() {
                   if (!item) return null
                   
                   const itemTotal = (item.quantity || 0) * (item.unitPrice || 0)
-                  const discountAmount = (itemTotal * (item.discount || 0)) / 100
-                  const afterDiscount = itemTotal - discountAmount
-                  const itemTax = (afterDiscount * (item.tax || 0)) / 100
-                  const itemFinalTotal = afterDiscount + itemTax
+                  const itemTax = (itemTotal * (watchedTaxRate ?? 5)) / 100
+                  const itemFinalTotal = itemTotal + itemTax
 
                   return (
                     <TableRow key={field.id}>
@@ -325,24 +359,6 @@ export default function EditInvoicePage() {
                           type="number"
                           step="0.01"
                           {...register(`items.${index}.unitPrice`, {
-                            valueAsNumber: true,
-                          })}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          {...register(`items.${index}.discount`, {
-                            valueAsNumber: true,
-                          })}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          {...register(`items.${index}.tax`, {
                             valueAsNumber: true,
                           })}
                         />
@@ -409,10 +425,11 @@ export default function EditInvoicePage() {
           </Button>
           <Button 
             type="submit"
+            disabled={saving}
             variant="gold"
             className="bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-blue-900 hover:from-yellow-500 hover:via-yellow-600 hover:to-yellow-700 shadow-gold hover:shadow-xl font-bold border-2 border-yellow-300/50 px-8 py-3"
           >
-            Update Invoice
+            {saving ? "Saving..." : "Update Invoice"}
           </Button>
         </div>
       </form>

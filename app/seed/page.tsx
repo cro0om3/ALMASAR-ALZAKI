@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { seedDummyData } from "@/lib/data/seed-data"
-import { customerService, quotationService, projectService, usageService, vehicleService, invoiceService } from "@/lib/data"
 import { CheckCircle, XCircle } from "lucide-react"
 
 export default function SeedPage() {
@@ -19,18 +18,65 @@ export default function SeedPage() {
   })
 
   useEffect(() => {
-    updateStats()
+    const load = async () => {
+      try {
+        const [c, q, p, u, v, i] = await Promise.all([
+          fetch('/api/customers'),
+          fetch('/api/quotations'),
+          fetch('/api/projects'),
+          fetch('/api/usage-entries'),
+          fetch('/api/vehicles'),
+          fetch('/api/invoices'),
+        ])
+        const customers = c.ok ? await c.json() : []
+        const quotations = q.ok ? await q.json() : []
+        const projects = p.ok ? await p.json() : []
+        const usageEntries = u.ok ? await u.json() : []
+        const vehicles = v.ok ? await v.json() : []
+        const invoices = i.ok ? await i.json() : []
+        setStats({
+          customers: (customers || []).length,
+          quotations: (quotations || []).length,
+          projects: (projects || []).length,
+          usageEntries: (usageEntries || []).length,
+          vehicles: (vehicles || []).length,
+          invoices: (invoices || []).length,
+        })
+      } catch (_e) {
+        // keep default zeros
+      }
+    }
+    load()
   }, [])
 
   const updateStats = () => {
-    setStats({
-      customers: customerService.getAll().length,
-      quotations: quotationService.getAll().length,
-      projects: projectService.getAll().length,
-      usageEntries: usageService.getAll().length,
-      vehicles: vehicleService.getAll().length,
-      invoices: invoiceService.getAll().length,
-    })
+    const load = async () => {
+      try {
+        const [c, q, p, u, v, i] = await Promise.all([
+          fetch('/api/customers'),
+          fetch('/api/quotations'),
+          fetch('/api/projects'),
+          fetch('/api/usage-entries'),
+          fetch('/api/vehicles'),
+          fetch('/api/invoices'),
+        ])
+        const customers = c.ok ? await c.json() : []
+        const quotations = q.ok ? await q.json() : []
+        const projects = p.ok ? await p.json() : []
+        const usageEntries = u.ok ? await u.json() : []
+        const vehicles = v.ok ? await v.json() : []
+        const invoices = i.ok ? await i.json() : []
+        setStats({
+          customers: (customers || []).length,
+          quotations: (quotations || []).length,
+          projects: (projects || []).length,
+          usageEntries: (usageEntries || []).length,
+          vehicles: (vehicles || []).length,
+          invoices: (invoices || []).length,
+        })
+      } catch (_e) {}
+    }
+    load()
   }
 
   const handleSeed = () => {
@@ -58,7 +104,7 @@ export default function SeedPage() {
         </div>
       </div>
 
-      <Card className="border-2 border-blue-200/60">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60">
         <CardHeader>
           <CardTitle className="text-xl font-bold text-blue-900">Current Data</CardTitle>
         </CardHeader>

@@ -7,7 +7,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DateRangePicker } from "./DateRangePicker"
 import { ExportButton } from "./ExportButton"
 import { FileText, Download, Calendar, TrendingUp, DollarSign } from "lucide-react"
-import { quotationService, invoiceService, customerService } from "@/lib/data"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { ExportData } from "@/lib/utils/export-utils"
 
@@ -40,40 +39,44 @@ export function ReportsPanel() {
   })
   const [reportData, setReportData] = useState<ReportData | null>(null)
 
-  const generateReport = () => {
+  const generateReport = async () => {
     const startDate = new Date(dateRange.start)
     const endDate = new Date(dateRange.end)
     endDate.setHours(23, 59, 59, 999)
 
-    const quotations = quotationService.getAll().filter(q => {
-      const qDate = new Date(q.date)
-      return qDate >= startDate && qDate <= endDate
-    })
+    try {
+      const [qRes, invRes, custRes] = await Promise.all([
+        fetch('/api/quotations'),
+        fetch('/api/invoices'),
+        fetch('/api/customers'),
+      ])
+      const quotations = (qRes.ok ? await qRes.json() : []).filter((q: any) => {
+        const qDate = new Date(q.date)
+        return qDate >= startDate && qDate <= endDate
+      })
+      const invoices = (invRes.ok ? await invRes.json() : []).filter((inv: any) => {
+        const invDate = new Date(inv.date)
+        return invDate >= startDate && invDate <= endDate
+      })
+      const customers = (custRes.ok ? await custRes.json() : []).filter((c: any) => {
+        const cDate = new Date(c.createdAt || 0)
+        return cDate >= startDate && cDate <= endDate
+      })
 
-    const invoices = invoiceService.getAll().filter(inv => {
-      const invDate = new Date(inv.date)
-      return invDate >= startDate && invDate <= endDate
-    })
-
-    const customers = customerService.getAll().filter(c => {
-      const cDate = new Date(c.createdAt)
-      return cDate >= startDate && cDate <= endDate
-    })
-
-    const data: ReportData = {
+      const data: ReportData = {
       period: `${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}`,
       quotations: {
         total: quotations.length,
-        accepted: quotations.filter(q => q.status === 'accepted').length,
-        rejected: quotations.filter(q => q.status === 'rejected').length,
-        totalValue: quotations.reduce((sum, q) => sum + q.total, 0),
+        accepted: quotations.filter((q: any) => q.status === 'accepted').length,
+        rejected: quotations.filter((q: any) => q.status === 'rejected').length,
+        totalValue: quotations.reduce((sum: number, q: any) => sum + q.total, 0),
       },
       invoices: {
         total: invoices.length,
-        paid: invoices.filter(inv => inv.status === 'paid').length,
-        pending: invoices.filter(inv => inv.status === 'sent' || inv.status === 'overdue').length,
-        totalRevenue: invoices.filter(inv => inv.status === 'paid').reduce((sum, inv) => sum + inv.total, 0),
-        pendingAmount: invoices.filter(inv => inv.status === 'sent' || inv.status === 'overdue').reduce((sum, inv) => sum + (inv.total - (inv.paidAmount || 0)), 0),
+        paid: invoices.filter((inv: any) => inv.status === 'paid').length,
+        pending: invoices.filter((inv: any) => inv.status === 'sent' || inv.status === 'overdue').length,
+        totalRevenue: invoices.filter((inv: any) => inv.status === 'paid').reduce((sum: number, inv: any) => sum + inv.total, 0),
+        pendingAmount: invoices.filter((inv: any) => inv.status === 'sent' || inv.status === 'overdue').reduce((sum: number, inv: any) => sum + (inv.total - (inv.paidAmount || 0)), 0),
       },
       customers: {
         total: customers.length,
@@ -81,7 +84,10 @@ export function ReportsPanel() {
       },
     }
 
-    setReportData(data)
+      setReportData(data)
+    } catch (_e) {
+      setReportData(null)
+    }
   }
 
   const getExportData = (): ExportData => {
@@ -103,14 +109,14 @@ export function ReportsPanel() {
       documentNumber: `RPT-${Date.now()}`,
       date: new Date().toISOString(),
       items: [
-        { description: "Total Quotations", quantity: reportData.quotations.total, unitPrice: 0, discount: 0, tax: 0, total: reportData.quotations.total },
-        { description: "Accepted Quotations", quantity: reportData.quotations.accepted, unitPrice: 0, discount: 0, tax: 0, total: reportData.quotations.accepted },
-        { description: "Total Quotation Value", quantity: 1, unitPrice: reportData.quotations.totalValue, discount: 0, tax: 0, total: reportData.quotations.totalValue },
-        { description: "Total Invoices", quantity: reportData.invoices.total, unitPrice: 0, discount: 0, tax: 0, total: reportData.invoices.total },
-        { description: "Paid Invoices", quantity: reportData.invoices.paid, unitPrice: 0, discount: 0, tax: 0, total: reportData.invoices.paid },
-        { description: "Total Revenue", quantity: 1, unitPrice: reportData.invoices.totalRevenue, discount: 0, tax: 0, total: reportData.invoices.totalRevenue },
-        { description: "Pending Amount", quantity: 1, unitPrice: reportData.invoices.pendingAmount, discount: 0, tax: 0, total: reportData.invoices.pendingAmount },
-        { description: "Total Customers", quantity: reportData.customers.total, unitPrice: 0, discount: 0, tax: 0, total: reportData.customers.total },
+        { description: "Total Quotations", quantity: reportData.quotations.total, unitPrice: 0, tax: 0, total: reportData.quotations.total },
+        { description: "Accepted Quotations", quantity: reportData.quotations.accepted, unitPrice: 0, tax: 0, total: reportData.quotations.accepted },
+        { description: "Total Quotation Value", quantity: 1, unitPrice: reportData.quotations.totalValue, tax: 0, total: reportData.quotations.totalValue },
+        { description: "Total Invoices", quantity: reportData.invoices.total, unitPrice: 0, tax: 0, total: reportData.invoices.total },
+        { description: "Paid Invoices", quantity: reportData.invoices.paid, unitPrice: 0, tax: 0, total: reportData.invoices.paid },
+        { description: "Total Revenue", quantity: 1, unitPrice: reportData.invoices.totalRevenue, tax: 0, total: reportData.invoices.totalRevenue },
+        { description: "Pending Amount", quantity: 1, unitPrice: reportData.invoices.pendingAmount, tax: 0, total: reportData.invoices.pendingAmount },
+        { description: "Total Customers", quantity: reportData.customers.total, unitPrice: 0, tax: 0, total: reportData.customers.total },
       ],
       subtotal: reportData.quotations.totalValue + reportData.invoices.totalRevenue,
       taxRate: 0,
@@ -124,7 +130,7 @@ export function ReportsPanel() {
   }
 
   return (
-    <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
+    <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
       <CardHeader>
         <CardTitle className="text-xl font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2">
           <FileText className="h-5 w-5 text-gold dark:text-yellow-400" />
@@ -137,7 +143,7 @@ export function ReportsPanel() {
           <div className="space-y-2">
             <label className="text-sm font-medium text-blue-900 dark:text-blue-100">Report Type</label>
             <Select value={reportType} onValueChange={(value: any) => setReportType(value)}>
-              <SelectTrigger className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60">
+              <SelectTrigger className="h-12 border-2 border-blue-400 dark:border-blue-800/60">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -155,7 +161,7 @@ export function ReportsPanel() {
               type="date"
               value={dateRange.start}
               onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-              className="w-full h-12 px-4 rounded-lg border-2 border-blue-200/60 dark:border-blue-800/60 bg-white dark:bg-blue-900 text-blue-900 dark:text-blue-100"
+              className="w-full h-12 px-4 rounded-lg border-2 border-blue-400 dark:border-blue-800/60 bg-white dark:bg-blue-900 text-blue-900 dark:text-blue-100"
             />
           </div>
 
@@ -165,7 +171,7 @@ export function ReportsPanel() {
               type="date"
               value={dateRange.end}
               onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-              className="w-full h-12 px-4 rounded-lg border-2 border-blue-200/60 dark:border-blue-800/60 bg-white dark:bg-blue-900 text-blue-900 dark:text-blue-100"
+              className="w-full h-12 px-4 rounded-lg border-2 border-blue-400 dark:border-blue-800/60 bg-white dark:bg-blue-900 text-blue-900 dark:text-blue-100"
             />
           </div>
         </div>
@@ -191,7 +197,7 @@ export function ReportsPanel() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <div className="p-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-400 dark:border-blue-800">
                 <p className="text-sm text-gray-600 dark:text-gray-400">Total Quotations</p>
                 <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">{reportData.quotations.total}</p>
                 <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">

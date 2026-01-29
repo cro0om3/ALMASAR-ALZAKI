@@ -14,45 +14,69 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Search, Eye, Edit, Trash2, FileText, Truck, Calendar } from "lucide-react"
-import { projectService } from "@/lib/data/project-service"
-import { quotationService, customerService, vehicleService } from "@/lib/data"
 import { Project } from "@/types/project"
+import type { Customer } from "@/types"
+import type { Quotation } from "@/types"
+import type { Vehicle } from "@/types"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { Card } from "@/components/ui/card"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 
+type ProjectWithDetails = Project & { customer?: Customer; quotation?: Quotation; vehicles?: Vehicle[] }
+
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState<Project[]>([])
+  const [projects, setProjects] = useState<ProjectWithDetails[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
   const { canEdit, canDelete } = usePermissions()
 
-  useEffect(() => {
-    const loadProjects = () => {
-      const allProjects = projectService.getAll()
-      // Add customer and vehicle details
-      const projectsWithDetails = allProjects.map(p => ({
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      const [projRes, custRes, quotRes, vehRes] = await Promise.all([
+        fetch('/api/projects'),
+        fetch('/api/customers'),
+        fetch('/api/quotations'),
+        fetch('/api/vehicles'),
+      ])
+      if (!projRes.ok) throw new Error('Failed to load')
+      const allProjects = await projRes.json()
+      const customers = custRes.ok ? await custRes.json() : []
+      const quotations = quotRes.ok ? await quotRes.json() : []
+      const vehicles = vehRes.ok ? await vehRes.json() : []
+      const cMap = new Map((customers || []).map((c: Customer) => [c.id, c]))
+      const qMap = new Map((quotations || []).map((q: Quotation) => [q.id, q]))
+      const vMap = new Map((vehicles || []).map((v: Vehicle) => [v.id, v]))
+      setProjects((allProjects || []).map((p: Project) => ({
         ...p,
-        customer: customerService.getById(p.customerId),
-        quotation: quotationService.getById(p.quotationId),
-        vehicles: p.assignedVehicles.map(vId => vehicleService.getById(vId)).filter(Boolean),
-      }))
-      setProjects(projectsWithDetails)
+        customer: cMap.get(p.customerId),
+        quotation: qMap.get(p.quotationId),
+        vehicles: (p.assignedVehicles || []).map((vId: string) => vMap.get(vId)).filter(Boolean),
+      })))
+    } catch (e) {
+      console.error(e)
+      setProjects([])
+    } finally {
+      setLoading(false)
     }
-    loadProjects()
+  }
+
+  useEffect(() => {
+    loadData()
   }, [])
 
-  const handleDelete = (id: string) => {
-    if (confirm("Are you sure you want to delete this project?")) {
-      projectService.delete(id)
-      setProjects(projectService.getAll().map(p => ({
-        ...p,
-        customer: customerService.getById(p.customerId),
-        quotation: quotationService.getById(p.quotationId),
-        vehicles: p.assignedVehicles.map(vId => vehicleService.getById(vId)).filter(Boolean),
-      })))
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this project?")) return
+    try {
+      const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete')
+      await loadData()
+    } catch (e) {
+      console.error(e)
+      alert('Failed to delete project.')
     }
   }
 
@@ -88,9 +112,9 @@ export default function ProjectsPage() {
 
   const filteredProjects = projects.filter((p) =>
     p.projectNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.customer?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (quotationService.getById(p.quotationId)?.quotationNumber || '').toLowerCase().includes(searchTerm.toLowerCase())
+    p.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.customer?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (p.quotation?.quotationNumber || '').toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   return (
@@ -112,10 +136,15 @@ export default function ProjectsPage() {
         />
       </div>
 
-      <Card className="border-2 border-blue-200/60 shadow-card overflow-hidden">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+          </div>
+        ) : (
         <Table>
           <TableHeader>
-            <TableRow className="bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-900/50 dark:to-blue-800/50 border-b-2 border-blue-200 dark:border-blue-800">
+            <TableRow className="bg-white dark:bg-blue-900/50 border-b-2 border-blue-400 dark:border-blue-700">
               <TableHead className="font-bold text-blue-900 dark:text-blue-100">Project Number</TableHead>
               <TableHead className="font-bold text-blue-900 dark:text-blue-100">Title</TableHead>
               <TableHead className="font-bold text-blue-900 dark:text-blue-100">Customer</TableHead>
@@ -148,7 +177,7 @@ export default function ProjectsPage() {
                     {project.customer?.name || "Unknown"}
                   </TableCell>
                   <TableCell className="text-gray-600 dark:text-gray-300">
-                    {quotationService.getById(project.quotationId)?.quotationNumber || "N/A"}
+                    {project.quotation?.quotationNumber || "N/A"}
                   </TableCell>
                   <TableCell className="text-gray-700 dark:text-gray-300">
                     <span className="font-medium">{getBillingTypeLabel(project.billingType)}</span>
@@ -211,6 +240,7 @@ export default function ProjectsPage() {
             )}
           </TableBody>
         </Table>
+        )}
       </Card>
     </div>
   )

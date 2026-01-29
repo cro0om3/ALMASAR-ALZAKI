@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { quotationService, invoiceService, purchaseOrderService, customerService, vendorService, employeeService, projectService } from "@/lib/data"
 import { cn } from "@/lib/utils"
 
 interface SearchResult {
@@ -19,11 +18,22 @@ interface SearchResult {
   icon: any
 }
 
+interface SearchData {
+  quotations: any[]
+  invoices: any[]
+  purchaseOrders: any[]
+  customers: any[]
+  vendors: any[]
+  employees: any[]
+  projects: any[]
+}
+
 export function SearchBar() {
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<SearchResult[]>([])
   const [isOpen, setIsOpen] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [searchData, setSearchData] = useState<SearchData | null>(null)
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
@@ -64,22 +74,56 @@ export function SearchBar() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, results, selectedIndex])
 
+  // Load search data when opening
   useEffect(() => {
-    if (query.length < 2) {
+    if (!isOpen) return
+    let cancelled = false
+    const load = async () => {
+      try {
+        const [q, i, p, c, v, e, pr] = await Promise.all([
+          fetch('/api/quotations'),
+          fetch('/api/invoices'),
+          fetch('/api/purchase-orders'),
+          fetch('/api/customers'),
+          fetch('/api/vendors'),
+          fetch('/api/employees'),
+          fetch('/api/projects'),
+        ])
+        if (cancelled) return
+        setSearchData({
+          quotations: q.ok ? await q.json() : [],
+          invoices: i.ok ? await i.json() : [],
+          purchaseOrders: p.ok ? await p.json() : [],
+          customers: c.ok ? await c.json() : [],
+          vendors: v.ok ? await v.json() : [],
+          employees: e.ok ? await e.json() : [],
+          projects: pr.ok ? await pr.json() : [],
+        })
+      } catch (_e) {
+        if (!cancelled) setSearchData(null)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [isOpen])
+
+  // Search when query or searchData changes
+  useEffect(() => {
+    if (query.length < 2 || !searchData) {
       setResults([])
       return
     }
-
     const searchTerm = query.toLowerCase()
     const searchResults: SearchResult[] = []
+    const customerMap = new Map(searchData.customers.map((c: any) => [c.id, c]))
+    const vendorMap = new Map(searchData.vendors.map((v: any) => [v.id, v]))
 
-    // Search Quotations
-    quotationService.getAll().forEach((q) => {
+    searchData.quotations.forEach((q: any) => {
       if (
-        q.quotationNumber.toLowerCase().includes(searchTerm) ||
-        q.customerId.toLowerCase().includes(searchTerm)
+        (q.quotationNumber && q.quotationNumber.toLowerCase().includes(searchTerm)) ||
+        (q.customerId && q.customerId.toLowerCase().includes(searchTerm))
       ) {
-        const customer = customerService.getById(q.customerId)
+        const customer = customerMap.get(q.customerId)
         searchResults.push({
           id: q.id,
           type: 'quotation',
@@ -91,14 +135,12 @@ export function SearchBar() {
         })
       }
     })
-
-    // Search Invoices
-    invoiceService.getAll().forEach((inv) => {
+    searchData.invoices.forEach((inv: any) => {
       if (
-        inv.invoiceNumber.toLowerCase().includes(searchTerm) ||
-        inv.customerId.toLowerCase().includes(searchTerm)
+        (inv.invoiceNumber && inv.invoiceNumber.toLowerCase().includes(searchTerm)) ||
+        (inv.customerId && inv.customerId.toLowerCase().includes(searchTerm))
       ) {
-        const customer = customerService.getById(inv.customerId)
+        const customer = customerMap.get(inv.customerId)
         searchResults.push({
           id: inv.id,
           type: 'invoice',
@@ -110,16 +152,14 @@ export function SearchBar() {
         })
       }
     })
-
-    // Search Purchase Orders
-    purchaseOrderService.getAll().forEach((po) => {
+    searchData.purchaseOrders.forEach((po: any) => {
       if (
-        po.orderNumber.toLowerCase().includes(searchTerm) ||
+        (po.orderNumber && po.orderNumber.toLowerCase().includes(searchTerm)) ||
         (po.vendorId && po.vendorId.toLowerCase().includes(searchTerm)) ||
         (po.customerId && po.customerId.toLowerCase().includes(searchTerm))
       ) {
-        const vendor = po.vendorId ? vendorService.getById(po.vendorId) : null
-        const customer = po.customerId ? customerService.getById(po.customerId) : null
+        const vendor = po.vendorId ? vendorMap.get(po.vendorId) : null
+        const customer = po.customerId ? customerMap.get(po.customerId) : null
         searchResults.push({
           id: po.id,
           type: 'purchase_order',
@@ -131,13 +171,11 @@ export function SearchBar() {
         })
       }
     })
-
-    // Search Customers
-    customerService.getAll().forEach((customer) => {
+    searchData.customers.forEach((customer: any) => {
       if (
-        customer.name.toLowerCase().includes(searchTerm) ||
-        customer.email?.toLowerCase().includes(searchTerm) ||
-        customer.phone?.toLowerCase().includes(searchTerm)
+        (customer.name && customer.name.toLowerCase().includes(searchTerm)) ||
+        (customer.email && customer.email.toLowerCase().includes(searchTerm)) ||
+        (customer.phone && customer.phone.toLowerCase().includes(searchTerm))
       ) {
         searchResults.push({
           id: customer.id,
@@ -149,13 +187,11 @@ export function SearchBar() {
         })
       }
     })
-
-    // Search Vendors
-    vendorService.getAll().forEach((vendor) => {
+    searchData.vendors.forEach((vendor: any) => {
       if (
-        vendor.name.toLowerCase().includes(searchTerm) ||
-        vendor.email?.toLowerCase().includes(searchTerm) ||
-        vendor.phone?.toLowerCase().includes(searchTerm)
+        (vendor.name && vendor.name.toLowerCase().includes(searchTerm)) ||
+        (vendor.email && vendor.email.toLowerCase().includes(searchTerm)) ||
+        (vendor.phone && vendor.phone.toLowerCase().includes(searchTerm))
       ) {
         searchResults.push({
           id: vendor.id,
@@ -167,49 +203,43 @@ export function SearchBar() {
         })
       }
     })
-
-    // Search Employees
-    employeeService.getAll().forEach((employee) => {
-      const fullName = `${employee.firstName} ${employee.lastName}`
+    searchData.employees.forEach((employee: any) => {
+      const fullName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim()
       if (
         fullName.toLowerCase().includes(searchTerm) ||
-        employee.email?.toLowerCase().includes(searchTerm) ||
-        employee.phone?.toLowerCase().includes(searchTerm)
+        (employee.email && employee.email.toLowerCase().includes(searchTerm)) ||
+        (employee.phone && employee.phone.toLowerCase().includes(searchTerm))
       ) {
         searchResults.push({
           id: employee.id,
           type: 'employee',
-          title: fullName,
+          title: fullName || 'Unknown',
           subtitle: employee.email || employee.phone || 'No contact info',
           link: `/employees/${employee.id}`,
           icon: UserCircle,
         })
       }
     })
-
-    // Search Projects
-    if (projectService && projectService.getAll) {
-      projectService.getAll().forEach((project: any) => {
-        if (
-          project.name?.toLowerCase().includes(searchTerm) ||
-          project.projectNumber?.toLowerCase().includes(searchTerm)
-        ) {
-          searchResults.push({
-            id: project.id,
-            type: 'project',
-            title: project.name,
-            subtitle: project.projectNumber || 'No project number',
-            number: project.projectNumber,
-            link: `/projects/${project.id}`,
-            icon: FileText,
-          })
-        }
-      })
-    }
+    searchData.projects.forEach((project: any) => {
+      if (
+        (project.title && project.title.toLowerCase().includes(searchTerm)) ||
+        (project.projectNumber && project.projectNumber.toLowerCase().includes(searchTerm))
+      ) {
+        searchResults.push({
+          id: project.id,
+          type: 'project',
+          title: project.title || project.projectNumber || 'Project',
+          subtitle: project.projectNumber || 'No project number',
+          number: project.projectNumber,
+          link: `/projects/${project.id}`,
+          icon: FileText,
+        })
+      }
+    })
 
     setResults(searchResults.slice(0, 8))
     setSelectedIndex(0)
-  }, [query])
+  }, [query, searchData])
 
   const handleSelectResult = (result: SearchResult) => {
     router.push(result.link)
@@ -240,7 +270,7 @@ export function SearchBar() {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="hidden lg:flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-blue-900/50 text-sm text-gray-500 dark:text-gray-400 hover:border-blue-400 dark:hover:border-blue-600 transition-colors w-full max-w-md"
+        className="hidden lg:flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-400 dark:border-blue-800 bg-white dark:bg-blue-900/50 text-sm text-gray-500 dark:text-gray-400 hover:border-blue-400 dark:hover:border-blue-600 transition-colors w-full max-w-md"
       >
         <Search className="h-4 w-4" />
         <span>Search...</span>
@@ -255,7 +285,7 @@ export function SearchBar() {
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] px-4" onClick={() => setIsOpen(false)}>
       <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
         <Card className="border-2 border-blue-300 dark:border-blue-700 shadow-2xl bg-white dark:bg-blue-950">
-          <div className="flex items-center gap-2 p-4 border-b border-blue-200 dark:border-blue-800">
+          <div className="flex items-center gap-2 p-4 border-b border-blue-400 dark:border-blue-800">
             <Search className="h-5 w-5 text-gray-400" />
             <Input
               ref={inputRef}
@@ -311,7 +341,7 @@ export function SearchBar() {
           )}
           {query.length >= 2 && results.length === 0 && (
             <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-              No results found for "{query}"
+              No results found for &quot;{query}&quot;
             </div>
           )}
           {query.length < 2 && (

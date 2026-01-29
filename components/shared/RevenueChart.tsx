@@ -23,7 +23,7 @@ export function RevenueChart({
   const displayData = monthlyData.slice(-6)
 
   return (
-    <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
+    <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>

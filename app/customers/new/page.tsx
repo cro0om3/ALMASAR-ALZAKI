@@ -7,32 +7,22 @@ import * as z from "zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ImageUpload } from "@/components/mobile/ImageUpload"
-import { customerService } from "@/lib/data"
-import { useState } from "react"
 
 const customerSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email address"),
-  phone: z.string().min(1, "Phone is required"),
-  address: z.string().min(1, "Address is required"),
-  city: z.string().min(1, "City is required"),
-  state: z.string().min(1, "State is required"),
-  zipCode: z.string().min(1, "Zip code is required"),
-  country: z.string().min(1, "Country is required"),
-  // Identity and residence fields (optional)
-  idNumber: z.string().optional(),
-  passportNumber: z.string().optional(),
-  residenceIssueDate: z.string().optional(),
-  residenceExpiryDate: z.string().optional(),
-  nationality: z.string().optional(),
+  name: z.string().optional(),
+  email: z.union([z.string().email("Invalid email address"), z.literal("")]).optional(),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
+  country: z.string().optional(),
 })
 
 type CustomerFormData = z.infer<typeof customerSchema>
 
 export default function NewCustomerPage() {
   const router = useRouter()
-  const [images, setImages] = useState<File[]>([])
   const {
     register,
     handleSubmit,
@@ -41,16 +31,22 @@ export default function NewCustomerPage() {
     resolver: zodResolver(customerSchema),
   })
 
-  const onSubmit = (data: CustomerFormData) => {
-    customerService.create(data)
-    // TODO: Upload images if needed
-    router.push("/customers")
-  }
-
-  const handleImageUpload = (files: File[]) => {
-    setImages(files)
-    // Here you can upload to storage or save to database
-    console.log("Images uploaded:", files)
+  const onSubmit = async (data: CustomerFormData) => {
+    try {
+      const response = await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to create customer')
+      }
+      router.push("/customers")
+    } catch (error: any) {
+      console.error('Error creating customer:', error)
+      alert('Failed to create customer. Please try again.')
+    }
   }
 
   return (
@@ -73,11 +69,11 @@ export default function NewCustomerPage() {
           
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="name" className="text-blue-900 dark:text-blue-100 font-medium">Name *</Label>
+              <Label htmlFor="name" className="text-blue-900 dark:text-blue-100 font-medium">Name</Label>
               <Input 
                 id="name" 
                 {...register("name")} 
-                className="border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
+                className="border-blue-400 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
               />
               {errors.name && (
                 <p className="text-sm text-red-600 dark:text-red-400">{errors.name.message}</p>
@@ -85,12 +81,12 @@ export default function NewCustomerPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-blue-900 dark:text-blue-100 font-medium">Email *</Label>
+              <Label htmlFor="email" className="text-blue-900 dark:text-blue-100 font-medium">Email</Label>
               <Input 
                 id="email" 
                 type="email" 
                 {...register("email")} 
-                className="border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
+                className="border-blue-400 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
               />
               {errors.email && (
                 <p className="text-sm text-red-600 dark:text-red-400">{errors.email.message}</p>
@@ -98,11 +94,11 @@ export default function NewCustomerPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone" className="text-blue-900 dark:text-blue-100 font-medium">Phone *</Label>
+              <Label htmlFor="phone" className="text-blue-900 dark:text-blue-100 font-medium">Phone</Label>
               <Input 
                 id="phone" 
                 {...register("phone")} 
-                className="border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
+                className="border-blue-400 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
               />
               {errors.phone && (
                 <p className="text-sm text-red-600 dark:text-red-400">{errors.phone.message}</p>
@@ -110,11 +106,11 @@ export default function NewCustomerPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="address" className="text-blue-900 dark:text-blue-100 font-medium">Address *</Label>
+              <Label htmlFor="address" className="text-blue-900 dark:text-blue-100 font-medium">Address</Label>
               <Input 
                 id="address" 
                 {...register("address")} 
-                className="border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
+                className="border-blue-400 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
               />
               {errors.address && (
                 <p className="text-sm text-red-600 dark:text-red-400">{errors.address.message}</p>
@@ -122,11 +118,11 @@ export default function NewCustomerPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="city" className="text-blue-900 dark:text-blue-100 font-medium">City *</Label>
+              <Label htmlFor="city" className="text-blue-900 dark:text-blue-100 font-medium">City</Label>
               <Input 
                 id="city" 
                 {...register("city")} 
-                className="border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
+                className="border-blue-400 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
               />
               {errors.city && (
                 <p className="text-sm text-red-600 dark:text-red-400">{errors.city.message}</p>
@@ -134,11 +130,11 @@ export default function NewCustomerPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="state" className="text-blue-900 dark:text-blue-100 font-medium">State *</Label>
+              <Label htmlFor="state" className="text-blue-900 dark:text-blue-100 font-medium">State</Label>
               <Input 
                 id="state" 
                 {...register("state")} 
-                className="border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
+                className="border-blue-400 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
               />
               {errors.state && (
                 <p className="text-sm text-red-600 dark:text-red-400">{errors.state.message}</p>
@@ -146,11 +142,11 @@ export default function NewCustomerPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="zipCode" className="text-blue-900 dark:text-blue-100 font-medium">Zip Code *</Label>
+              <Label htmlFor="zipCode" className="text-blue-900 dark:text-blue-100 font-medium">Zip Code</Label>
               <Input 
                 id="zipCode" 
                 {...register("zipCode")} 
-                className="border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
+                className="border-blue-400 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
               />
               {errors.zipCode && (
                 <p className="text-sm text-red-600 dark:text-red-400">{errors.zipCode.message}</p>
@@ -158,92 +154,17 @@ export default function NewCustomerPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="country" className="text-blue-900 dark:text-blue-100 font-medium">Country *</Label>
+              <Label htmlFor="country" className="text-blue-900 dark:text-blue-100 font-medium">Country</Label>
               <Input 
                 id="country" 
                 {...register("country")} 
-                className="border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
+                className="border-blue-400 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
               />
               {errors.country && (
                 <p className="text-sm text-red-600 dark:text-red-400">{errors.country.message}</p>
               )}
             </div>
           </div>
-        </div>
-
-        <div className="bg-white dark:bg-blue-900/30 rounded-lg shadow-md p-6 border border-blue-100 dark:border-blue-800">
-          <h2 className="text-xl font-semibold text-blue-900 dark:text-blue-100 mb-4 flex items-center gap-2">
-            <span className="w-1 h-6 bg-gold rounded"></span>
-            Identity & Residence Information
-          </h2>
-          
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="idNumber" className="text-blue-900 dark:text-blue-100 font-medium">ID Number</Label>
-              <Input 
-                id="idNumber" 
-                {...register("idNumber")} 
-                className="border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
-                placeholder="رقم الهوية"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="passportNumber" className="text-blue-900 dark:text-blue-100 font-medium">Passport Number</Label>
-              <Input 
-                id="passportNumber" 
-                {...register("passportNumber")} 
-                className="border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
-                placeholder="رقم الجواز"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="nationality" className="text-blue-900 dark:text-blue-100 font-medium">Nationality</Label>
-              <Input 
-                id="nationality" 
-                {...register("nationality")} 
-                className="border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
-                placeholder="الجنسية"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="residenceIssueDate" className="text-blue-900 dark:text-blue-100 font-medium">Residence Issue Date</Label>
-              <Input 
-                id="residenceIssueDate" 
-                type="date"
-                {...register("residenceIssueDate")} 
-                className="border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="residenceExpiryDate" className="text-blue-900 dark:text-blue-100 font-medium">Residence Expiry Date</Label>
-              <Input 
-                id="residenceExpiryDate" 
-                type="date"
-                {...register("residenceExpiryDate")} 
-                className="border-blue-200 dark:border-blue-800 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-blue-900/30 rounded-lg shadow-md p-6 border border-blue-100 dark:border-blue-800">
-          <h2 className="text-xl font-semibold text-blue-900 dark:text-blue-100 mb-4 flex items-center gap-2">
-            <span className="w-1 h-6 bg-gold rounded"></span>
-            Customer Photos (Mobile)
-          </h2>
-          <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-            Take photos or upload images related to this customer
-          </p>
-          <ImageUpload
-            onUpload={handleImageUpload}
-            multiple={true}
-            maxFiles={5}
-            label="Upload Customer Photos"
-          />
         </div>
 
         <div className="flex flex-col sm:flex-row justify-end gap-4">

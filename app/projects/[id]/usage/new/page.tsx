@@ -17,26 +17,18 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Card } from "@/components/ui/card"
-import { projectService, usageService } from "@/lib/data/project-service"
-import { vehicleService } from "@/lib/data"
 import { Project } from "@/types/project"
 import { formatCurrency } from "@/lib/utils"
 
 const usageSchema = z.object({
-  vehicleId: z.string().min(1, "Vehicle is required"),
-  date: z.string().min(1, "Date is required"),
+  vehicleId: z.string().optional(),
+  date: z.string().optional(),
   hours: z.number().optional(),
   days: z.number().optional(),
   startTime: z.string().optional(),
   endTime: z.string().optional(),
-  description: z.string().min(1, "Description is required"),
+  description: z.string().optional(),
   location: z.string().optional(),
-}).refine((data) => {
-  // Must enter either hours or days
-  return data.hours !== undefined || data.days !== undefined
-}, {
-  message: "Please enter either hours or days",
-  path: ["hours"],
 })
 
 type UsageFormData = z.infer<typeof usageSchema>
@@ -62,37 +54,65 @@ export default function NewUsagePage() {
 
   useEffect(() => {
     const id = params.id as string
-    const p = projectService.getById(id)
-    if (p) {
-      setProject(p)
-      // Get assigned vehicles for the project
-      const assignedVehicles = p.assignedVehicles.map(vId => vehicleService.getById(vId)).filter(Boolean)
-      setVehicles(assignedVehicles)
+    if (!id) return
+    let cancelled = false
+    const load = async () => {
+      try {
+        const [pRes, vRes] = await Promise.all([
+          fetch(`/api/projects/${id}`),
+          fetch('/api/vehicles'),
+        ])
+        if (cancelled) return
+        const p = pRes.ok ? await pRes.json() : null
+        const vehiclesList = vRes.ok ? await vRes.json() : []
+        if (p) {
+          setProject(p)
+          const vList = vehiclesList || []
+          const assigned = (p.assignedVehicles || []).map((vId: string) => vList.find((v: any) => v.id === vId)).filter(Boolean)
+          setVehicles(assigned)
+        } else setProject(null)
+      } catch (_e) {
+        if (!cancelled) setProject(null)
+      }
     }
+    load()
+    return () => { cancelled = true }
   }, [params.id])
 
-  const onSubmit = (data: UsageFormData) => {
+  const onSubmit = async (data: UsageFormData) => {
     if (!project) return
-
-    const usageData = {
-      projectId: project.id,
-      vehicleId: data.vehicleId,
-      date: data.date,
-      hours: project.billingType === 'hours' ? data.hours : undefined,
-      days: project.billingType === 'days' ? data.days : undefined,
-      startTime: data.startTime,
-      endTime: data.endTime,
-      description: data.description,
-      location: data.location,
-      rate: project.billingType === 'hours' 
-        ? (project.hourlyRate || 0)
-        : project.billingType === 'days'
-        ? (project.dailyRate || 0)
-        : 0,
+    try {
+      const rate = project.billingType === 'hours' ? (project.hourlyRate || 0) : project.billingType === 'days' ? (project.dailyRate || 0) : 0
+      const hours = project.billingType === 'hours' ? data.hours : undefined
+      const days = project.billingType === 'days' ? data.days : undefined
+      const total = (hours ?? 0) * rate || (days ?? 0) * rate || 0
+      const usageData = {
+        projectId: project.id,
+        vehicleId: data.vehicleId,
+        date: data.date,
+        hours,
+        days,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        description: data.description,
+        location: data.location,
+        rate,
+        total,
+      }
+      const res = await fetch('/api/usage-entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(usageData),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to create usage entry')
+      }
+      router.push(`/projects/${project.id}`)
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.message || 'Failed to create usage entry')
     }
-
-    usageService.create(usageData)
-    router.push(`/projects/${project.id}`)
   }
 
   if (!project) {
@@ -115,7 +135,7 @@ export default function NewUsagePage() {
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        <Card className="border-2 border-blue-200/60 p-6">
+        <Card className="border-2 border-blue-400 dark:border-blue-800/60 p-6">
           <h2 className="text-xl font-semibold text-blue-900 mb-6 flex items-center gap-2">
             <span className="w-1 h-6 bg-gold rounded"></span>
             Usage Details
@@ -123,12 +143,12 @@ export default function NewUsagePage() {
           
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="vehicleId" className="text-blue-900 font-medium">Vehicle *</Label>
+              <Label htmlFor="vehicleId" className="text-blue-900 font-medium">Vehicle</Label>
               <Select
                 value={watch("vehicleId") || ""}
                 onValueChange={(value) => setValue("vehicleId", value)}
               >
-                <SelectTrigger className="h-12 border-2 border-blue-200/60">
+                <SelectTrigger className="h-12 border-2 border-blue-400 dark:border-blue-800/60">
                   <SelectValue placeholder="Select vehicle" />
                 </SelectTrigger>
                 <SelectContent>
@@ -145,7 +165,7 @@ export default function NewUsagePage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="date" className="text-blue-900 font-medium">Date *</Label>
+              <Label htmlFor="date" className="text-blue-900 font-medium">Date</Label>
               <Input type="date" id="date" {...register("date")} className="h-12" />
               {errors.date && (
                 <p className="text-sm text-red-600">{errors.date.message}</p>
@@ -155,7 +175,7 @@ export default function NewUsagePage() {
             {project.billingType === 'hours' && (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="hours" className="text-blue-900 font-medium">Hours *</Label>
+                  <Label htmlFor="hours" className="text-blue-900 font-medium">Hours</Label>
                   <Input
                     type="number"
                     step="0.5"
@@ -183,7 +203,7 @@ export default function NewUsagePage() {
 
             {project.billingType === 'days' && (
               <div className="space-y-2">
-                <Label htmlFor="days" className="text-blue-900 font-medium">Days *</Label>
+                <Label htmlFor="days" className="text-blue-900 font-medium">Days</Label>
                 <Input
                   type="number"
                   step="0.5"
@@ -205,12 +225,12 @@ export default function NewUsagePage() {
           </div>
 
           <div className="mt-4 space-y-2">
-            <Label htmlFor="description" className="text-blue-900 font-medium">Work Description *</Label>
+            <Label htmlFor="description" className="text-blue-900 font-medium">Work Description</Label>
             <Textarea
               id="description"
               {...register("description")}
               rows={4}
-              className="border-2 border-blue-200/60"
+              className="border-2 border-blue-400 dark:border-blue-800/60"
               placeholder="Describe the work performed..."
             />
             {errors.description && (

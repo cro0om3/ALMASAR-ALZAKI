@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Edit, ArrowLeft } from "lucide-react"
-import { vehicleService } from "@/lib/data"
 import { Vehicle } from "@/types"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { usePermissions } from "@/lib/hooks/use-permissions"
@@ -16,13 +15,28 @@ export default function VehicleDetailPage() {
   const router = useRouter()
   const { canEdit } = usePermissions()
   const [vehicle, setVehicle] = useState<Vehicle | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const id = params.id as string
-    const v = vehicleService.getById(id)
-    setVehicle(v || null)
+    if (!id) return
+    let cancelled = false
+    setLoading(true)
+    fetch(`/api/vehicles/${id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((v) => { if (!cancelled) setVehicle(v || null) })
+      .catch(() => { if (!cancelled) setVehicle(null) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [params.id])
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    )
+  }
   if (!vehicle) {
     return (
       <div className="flex items-center justify-center h-64">

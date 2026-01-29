@@ -1,0 +1,31 @@
+ما تم إنجازه:
+================
+1) تم إنشاء المشروع "uncle-website-system" على Vercel (Team: Cro0om Group).
+2) تمت إضافة متغيرات البيئة للمشروع:
+   - NEXT_PUBLIC_SUPABASE_URL
+   - NEXT_PUBLIC_SUPABASE_ANON_KEY
+   - SUPABASE_SERVICE_ROLE_KEY
+   (المشروع مربوط مع Supabase Maser-AlZaki)
+
+لم يكتمل:
+==========
+- النشر (Deploy): الـ CLI رفض التوكن. تحتاج أحد الخيارين:
+
+  الخيار أ — ربط الريبو من Vercel (موصى به):
+  1. ادخل: https://vercel.com/fhdgroup (أو من الداشبورد)
+  2. افتح المشروع "uncle-website-system"
+  3. Settings → Git → Connect Git Repository
+  4. اختر ريبو المشروع (GitHub/GitLab) وربطه
+  5. بعد الربط، أي push للفرع الرئيسي سينشر تلقائياً
+  6. أو من الصفحة: Deployments → Redeploy
+
+  الخيار ب — النشر من الطرفية:
+  1. من المشروع شغّل: npx vercel login (وسجّل الدخول)
+  2. ثم: npx vercel --prod --yes
+  (أو تأكد أن التوكن صحيح من https://vercel.com/account/tokens)
+
+بعد أول نشر ناجح:
+==================
+- جرّب الموقع من الرابط الذي يعطيك إياه Vercel (مثل uncle-website-system-xxx.vercel.app)
+- تأكد من تسجيل الدخول وصفحات Quotations / Invoices / Receipts
+- الربط مع Supabase يعمل تلقائياً عبر متغيرات البيئة التي أضفناها

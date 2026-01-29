@@ -11,7 +11,7 @@ export default function NotFound() {
 
   return (
     <div className="flex items-center justify-center min-h-[60vh] p-8">
-      <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 max-w-md w-full shadow-lg">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60 max-w-md w-full shadow-lg">
         <CardHeader>
           <div className="flex flex-col items-center gap-4 text-center">
             <div className="p-4 bg-blue-100 dark:bg-blue-900 rounded-full">
@@ -29,7 +29,7 @@ export default function NotFound() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-            The page you're looking for doesn't exist or has been moved.
+            The page you&apos;re looking for doesn&apos;t exist or has been moved.
           </p>
           <div className="flex flex-col gap-2">
             <Button

@@ -48,7 +48,7 @@ const defaultSettings: AppSettings = {
   quotationPrefix: "QT",
   invoicePrefix: "INV",
   receiptPrefix: "RCP",
-  companyName: "ALMSAR ALZAKI T&M",
+  companyName: "ALMSAR ALZAKI Transport & Maintenance",
   tradeLicense: "CN-5570900",
   taxRegNumber: "TRN: 105061702400003",
   phone: "+971543114444",

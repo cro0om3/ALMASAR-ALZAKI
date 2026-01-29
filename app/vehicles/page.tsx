@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Search, Edit, Trash2, Eye, Truck } from "lucide-react"
-import { vehicleService } from "@/lib/data"
 import { Vehicle } from "@/types"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { useRouter } from "next/navigation"
@@ -25,17 +24,38 @@ import { usePermissions } from "@/lib/hooks/use-permissions"
 export default function VehiclesPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
   const { canEdit, canDelete } = usePermissions()
 
+  const loadVehicles = async () => {
+    try {
+      setLoading(true)
+      const res = await fetch('/api/vehicles')
+      if (!res.ok) throw new Error('Failed to load vehicles')
+      const data = await res.json()
+      setVehicles(data)
+    } catch (e) {
+      console.error(e)
+      setVehicles([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
-    setVehicles(vehicleService.getAll())
+    loadVehicles()
   }, [])
 
-  const handleDelete = (id: string) => {
-    if (confirm("Are you sure you want to delete this vehicle?")) {
-      vehicleService.delete(id)
-      setVehicles(vehicleService.getAll())
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this vehicle?")) return
+    try {
+      const res = await fetch(`/api/vehicles/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete')
+      await loadVehicles()
+    } catch (e) {
+      console.error(e)
+      alert('Failed to delete vehicle.')
     }
   }
 
@@ -78,18 +98,23 @@ export default function VehiclesPage() {
         />
       </div>
 
-      <Card className="border-2 border-blue-200/60 shadow-card overflow-hidden">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+          </div>
+        ) : (
         <Table>
           <TableHeader>
-            <TableRow className="bg-gradient-to-r from-blue-50 to-blue-100/50 border-b-2 border-blue-200">
-              <TableHead className="font-bold text-blue-900">Make</TableHead>
-              <TableHead className="font-bold text-blue-900">Model</TableHead>
-              <TableHead className="font-bold text-blue-900">Year</TableHead>
-              <TableHead className="font-bold text-blue-900">License Plate</TableHead>
-              <TableHead className="font-bold text-blue-900">VIN</TableHead>
-              <TableHead className="font-bold text-blue-900">Mileage</TableHead>
-              <TableHead className="font-bold text-blue-900">Status</TableHead>
-              <TableHead className="text-right font-bold text-blue-900">Actions</TableHead>
+            <TableRow className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 dark:from-blue-900 dark:via-blue-800 dark:to-blue-900 border-b-0">
+              <TableHead className="font-bold text-white">Make</TableHead>
+              <TableHead className="font-bold text-white">Model</TableHead>
+              <TableHead className="font-bold text-white">Year</TableHead>
+              <TableHead className="font-bold text-white">License Plate</TableHead>
+              <TableHead className="font-bold text-white">VIN</TableHead>
+              <TableHead className="font-bold text-white">Mileage</TableHead>
+              <TableHead className="font-bold text-white">Status</TableHead>
+              <TableHead className="text-right font-bold text-white">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -154,6 +179,7 @@ export default function VehiclesPage() {
             )}
           </TableBody>
         </Table>
+        )}
       </Card>
     </div>
   )

@@ -23,14 +23,14 @@ export function Alert({
 }: AlertProps) {
   const variantClasses = {
     default:
-      "bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-100",
+      "bg-blue-50 dark:bg-blue-900/30 border-blue-400 dark:border-blue-800 text-blue-900 dark:text-blue-100",
     success:
       "bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800 text-green-900 dark:text-green-100",
     warning:
       "bg-yellow-50 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-800 text-yellow-900 dark:text-yellow-100",
     error:
       "bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800 text-red-900 dark:text-red-100",
-    info: "bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-100",
+    info: "bg-blue-50 dark:bg-blue-900/30 border-blue-400 dark:border-blue-800 text-blue-900 dark:text-blue-100",
   }
 
   const iconClasses = {

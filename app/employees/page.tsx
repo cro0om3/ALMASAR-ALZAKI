@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Search, Edit, Trash2, Eye, UserCircle } from "lucide-react"
-import { employeeService } from "@/lib/data"
 import { Employee } from "@/types"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { useRouter } from "next/navigation"
@@ -25,17 +24,38 @@ import { usePermissions } from "@/lib/hooks/use-permissions"
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
   const { canEdit, canDelete } = usePermissions()
 
+  const loadEmployees = async () => {
+    try {
+      setLoading(true)
+      const res = await fetch('/api/employees')
+      if (!res.ok) throw new Error('Failed to load employees')
+      const data = await res.json()
+      setEmployees(data)
+    } catch (e) {
+      console.error(e)
+      setEmployees([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
-    setEmployees(employeeService.getAll())
+    loadEmployees()
   }, [])
 
-  const handleDelete = (id: string) => {
-    if (confirm("Are you sure you want to delete this employee?")) {
-      employeeService.delete(id)
-      setEmployees(employeeService.getAll())
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this employee?")) return
+    try {
+      const res = await fetch(`/api/employees/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete')
+      await loadEmployees()
+    } catch (e) {
+      console.error(e)
+      alert('Failed to delete employee.')
     }
   }
 
@@ -78,18 +98,18 @@ export default function EmployeesPage() {
         />
       </div>
 
-      <Card className="border-2 border-blue-200/60 shadow-card overflow-hidden">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-900/50 dark:to-blue-800/50 border-b-2 border-blue-200 dark:border-blue-800">
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Employee Number</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Name</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Email</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Position</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Department</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Salary</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Status</TableHead>
-              <TableHead className="text-right font-bold text-blue-900 dark:text-blue-100">Actions</TableHead>
+            <TableRow className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 dark:from-blue-900 dark:via-blue-800 dark:to-blue-900 border-b-0">
+              <TableHead className="font-bold text-white">Employee Number</TableHead>
+              <TableHead className="font-bold text-white">Name</TableHead>
+              <TableHead className="font-bold text-white">Email</TableHead>
+              <TableHead className="font-bold text-white">Position</TableHead>
+              <TableHead className="font-bold text-white">Department</TableHead>
+              <TableHead className="font-bold text-white">Salary</TableHead>
+              <TableHead className="font-bold text-white">Status</TableHead>
+              <TableHead className="text-right font-bold text-white">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

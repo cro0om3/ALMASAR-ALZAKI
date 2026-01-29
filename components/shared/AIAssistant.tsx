@@ -157,7 +157,7 @@ export function AIAssistant({
   }
 
   return (
-    <Card className={`border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card ${className}`}>
+    <Card className={`border-2 border-blue-400 dark:border-blue-800/60 shadow-card ${className}`}>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -207,7 +207,7 @@ export function AIAssistant({
             onChange={(e) => setPrompt(e.target.value)}
             placeholder={getPlaceholder()}
             rows={4}
-            className="border-2 border-blue-200/60 dark:border-blue-800/60"
+            className="border-2 border-blue-400 dark:border-blue-800/60"
             disabled={isLoading || !aiEnabled}
           />
         </div>

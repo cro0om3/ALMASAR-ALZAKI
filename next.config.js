@@ -5,10 +5,16 @@ const nextConfig = {
   compress: true,
   swcMinify: true,
   
-  // Image optimization
+  // Image optimization (Supabase Storage for logo)
   images: {
     unoptimized: true,
-    remotePatterns: [],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '*.supabase.co',
+        pathname: '/storage/v1/object/public/**',
+      },
+    ],
   },
   
   // Performance optimizations

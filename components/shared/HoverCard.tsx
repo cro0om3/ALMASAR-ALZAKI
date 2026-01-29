@@ -24,7 +24,7 @@ export function HoverCard({ children, hoverContent, className, delay = 200 }: Ho
       {hoverContent && isHovered && (
         <Card
           className={cn(
-            "absolute z-50 mt-2 p-4 shadow-xl border-2 border-blue-200/60 dark:border-blue-800/60 bg-white dark:bg-blue-950 animate-fadeInUp",
+            "absolute z-50 mt-2 p-4 shadow-xl border-2 border-blue-400 dark:border-blue-800/60 bg-white dark:bg-blue-950 animate-fadeInUp",
             className
           )}
           style={{ animationDelay: `${delay}ms` }}

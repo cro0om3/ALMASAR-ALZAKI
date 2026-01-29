@@ -2,7 +2,6 @@
 
 import { useRouter, useSearchParams } from "next/navigation"
 import { PurchaseOrderForm } from "@/components/purchase-orders/PurchaseOrderForm"
-import { purchaseOrderService, quotationService } from "@/lib/data"
 import { useEffect, useState, Suspense } from "react"
 
 function NewPurchaseOrderContent() {
@@ -13,21 +12,37 @@ function NewPurchaseOrderContent() {
 
   useEffect(() => {
     if (fromQuotation) {
-      const quotation = quotationService.getById(fromQuotation)
-      if (quotation) {
-        setInitialOrder({
-          poType: "customer",
-          customerId: quotation.customerId,
-          quotationId: quotation.id,
-          taxRate: quotation.taxRate,
+      fetch(`/api/quotations/${fromQuotation}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((quotation) => {
+          if (quotation) {
+            setInitialOrder({
+              poType: "customer",
+              customerId: quotation.customerId,
+              quotationId: quotation.id,
+              taxRate: quotation.taxRate,
+            })
+          }
         })
-      }
     }
   }, [fromQuotation])
 
-  const handleSubmit = (data: any) => {
-    purchaseOrderService.create(data)
-    router.push("/purchase-orders")
+  const handleSubmit = async (data: any) => {
+    try {
+      const res = await fetch('/api/purchase-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to create purchase order')
+      }
+      router.push("/purchase-orders")
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.message || 'Failed to create purchase order')
+    }
   }
 
   const handleCancel = () => {

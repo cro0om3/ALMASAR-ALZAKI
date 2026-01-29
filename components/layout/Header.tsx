@@ -20,6 +20,8 @@ import { Badge } from "@/components/ui/badge"
 import { notificationService } from "@/lib/data/notification-service"
 import { Notification } from "@/types"
 import { formatDate } from "@/lib/utils"
+import Image from "next/image"
+import { settingsService } from "@/lib/data/settings-service"
 
 export function Header() {
   const router = useRouter()
@@ -27,6 +29,21 @@ export function Header() {
   const { user, signOut } = useAuth()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
+  const [logoVersion, setLogoVersion] = useState(0)
+
+  const logoUrl = typeof window !== "undefined" ? settingsService.get().logoUrl : undefined
+  const logoSrc = logoUrl || "/logo.png"
+
+  useEffect(() => {
+    const onSettingsUpdate = () => setLogoVersion((v) => v + 1)
+    window.addEventListener("settings-updated", onSettingsUpdate)
+    // Re-read logo after hydration may have run (avoids needing multiple reloads if event fired before listener attached)
+    const t = setTimeout(() => setLogoVersion((v) => v + 1), 200)
+    return () => {
+      window.removeEventListener("settings-updated", onSettingsUpdate)
+      clearTimeout(t)
+    }
+  }, [])
 
   const loadNotifications = () => {
     const allNotifications = notificationService.getAll()
@@ -83,11 +100,29 @@ export function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-30 w-full border-b-2 border-blue-200/60 dark:border-blue-800/60 bg-gradient-to-r from-white via-blue-50/50 to-white dark:from-blue-950 dark:via-blue-900 dark:to-blue-950 shadow-md">
-      <div className="flex h-14 items-center justify-between px-4 lg:px-6 gap-4">
-        <div className="lg:hidden">
-          <span className="text-sm font-semibold text-blue-900 dark:text-blue-100">ALMSAR ALZAKI</span>
-        </div>
+    <header className="sticky top-0 z-30 w-full border-b-2 border-blue-400 dark:border-blue-800/60 bg-gradient-to-r from-white/95 via-blue-50/80 to-white/95 dark:from-blue-950/95 dark:via-blue-900/95 dark:to-blue-950/95 shadow-lg backdrop-blur-md backdrop-saturate-150">
+      <div className="flex h-16 items-center justify-between px-4 lg:px-6 gap-4">
+        <Link href="/" className="flex items-center gap-2 group">
+          {logoSrc.startsWith("data:") ? (
+            <img
+              key={logoVersion}
+              src={logoSrc}
+              alt="ALMSAR ALZAKI Logo"
+              className="h-14 w-auto object-contain drop-shadow-lg group-hover:drop-shadow-xl group-hover:scale-105 transition-all duration-300"
+            />
+          ) : (
+            <Image
+              key={logoVersion}
+              src={logoSrc}
+              alt="ALMSAR ALZAKI Logo"
+              width={180}
+              height={60}
+              className="h-14 w-auto object-contain drop-shadow-lg group-hover:drop-shadow-xl group-hover:scale-105 transition-all duration-300"
+              priority
+              unoptimized={logoSrc.startsWith("http")}
+            />
+          )}
+        </Link>
         <div className="hidden lg:block flex-1 max-w-md">
           <SearchBar />
         </div>
@@ -129,7 +164,7 @@ export function Header() {
                 <span className="sr-only">Notifications</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80 border-blue-200 max-h-[500px] overflow-y-auto">
+            <DropdownMenuContent align="end" className="w-80 border-blue-400 dark:border-blue-800 max-h-[500px] overflow-y-auto">
               <div className="flex items-center justify-between px-2 py-1.5">
                 <DropdownMenuLabel className="text-blue-900 font-bold">Notifications</DropdownMenuLabel>
                 {unreadCount > 0 && (
@@ -213,7 +248,7 @@ export function Header() {
                 <span className="sr-only">Open user menu</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="border-blue-200">
+            <DropdownMenuContent align="end" className="border-blue-400 dark:border-blue-800">
               <DropdownMenuLabel className="text-blue-900">
                 {user?.name || user?.email || 'User'}
               </DropdownMenuLabel>

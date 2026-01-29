@@ -24,7 +24,7 @@ export function MobileBottomNav() {
   const pathname = usePathname()
 
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-blue-950 border-t border-blue-200 dark:border-blue-800 shadow-lg z-50">
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-blue-950 border-t border-blue-400 dark:border-blue-800 shadow-lg z-50">
       <div className="flex justify-around items-center h-16">
         {mobileNav.map((item) => {
           const Icon = item.icon

@@ -91,7 +91,7 @@ export function CommandPalette({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl bg-white dark:bg-blue-950 rounded-lg shadow-xl border-2 border-blue-200/60 dark:border-blue-800/60 overflow-hidden animate-bounce-in"
+        className="w-full max-w-2xl bg-white dark:bg-blue-950 rounded-lg shadow-xl border-2 border-blue-400 dark:border-blue-800/60 overflow-hidden animate-bounce-in"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-800">

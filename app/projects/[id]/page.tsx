@@ -6,9 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Edit, Plus, Calendar, Truck, Clock, FileText } from "lucide-react"
-import { projectService, usageService, monthlyInvoiceService } from "@/lib/data/project-service"
-import { quotationService, customerService, vehicleService } from "@/lib/data"
-import { invoiceService } from "@/lib/data"
 import { Project, UsageEntry } from "@/types/project"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import Link from "next/link"
@@ -21,33 +18,106 @@ export default function ProjectDetailPage() {
   const [project, setProject] = useState<Project | null>(null)
   const [usageEntries, setUsageEntries] = useState<UsageEntry[]>([])
   const [monthlyInvoices, setMonthlyInvoices] = useState<any[]>([])
+  const [customer, setCustomer] = useState<any>(null)
+  const [quotation, setQuotation] = useState<any>(null)
+  const [vehicles, setVehicles] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const id = params.id as string
-    const p = projectService.getById(id)
-    if (p) {
-      setProject(p)
-      setUsageEntries(usageService.getByProjectId(id))
-      setMonthlyInvoices(monthlyInvoiceService.getByProjectId(id))
+    if (!id) {
+      setLoading(false)
+      return
     }
+    let cancelled = false
+    setLoading(true)
+    const load = async () => {
+      try {
+        const [pRes, useRes, invRes, customers, quotations, vehiclesList] = await Promise.all([
+          fetch(`/api/projects/${id}`),
+          fetch(`/api/usage-entries?projectId=${id}`),
+          fetch(`/api/monthly-invoices?projectId=${id}`),
+          fetch('/api/customers').then((r) => r.ok ? r.json() : []),
+          fetch('/api/quotations').then((r) => r.ok ? r.json() : []),
+          fetch('/api/vehicles').then((r) => r.ok ? r.json() : []),
+        ])
+        if (cancelled) return
+        const p = pRes.ok ? await pRes.json() : null
+        const use = useRes.ok ? await useRes.json() : []
+        const inv = invRes.ok ? await invRes.json() : []
+        setProject(p)
+        setUsageEntries(use || [])
+        setMonthlyInvoices(inv || [])
+        if (p) {
+          setCustomer((customers || []).find((c: any) => c.id === p.customerId))
+          setQuotation((quotations || []).find((q: any) => q.id === p.quotationId))
+          setVehicles((p.assignedVehicles || []).map((vId: string) => (vehiclesList || []).find((v: any) => v.id === vId)).filter(Boolean))
+        } else {
+          setCustomer(null)
+          setQuotation(null)
+          setVehicles([])
+        }
+      } catch (e) {
+        if (!cancelled) setProject(null)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
   }, [params.id])
 
-  const handleGenerateMonthlyInvoice = (month: number, year: number) => {
+  const handleGenerateMonthlyInvoice = async (month: number, year: number) => {
     if (!project) return
-    
-    const quotation = quotationService.getById(project.quotationId)
-    const taxRate = quotation?.taxRate || 5 // Default to 5% if not found
-    
-    const invoice = monthlyInvoiceService.generateMonthlyInvoice(project.id, month, year, taxRate)
-    if (invoice) {
-      alert(`Monthly invoice created: ${invoice.invoiceNumber}`)
-      setMonthlyInvoices(monthlyInvoiceService.getByProjectId(project.id))
-      setUsageEntries(usageService.getByProjectId(project.id))
-    } else {
-      alert("No unbilled usage entries for this month")
+    try {
+      const qRes = await fetch(`/api/quotations/${project.quotationId}`)
+      const quotation = qRes.ok ? await qRes.json() : null
+      const taxRate = quotation?.taxRate || 5
+      const startDate = new Date(year, month - 1, 1)
+      const endDate = new Date(year, month, 0)
+      const res = await fetch('/api/monthly-invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoiceNumber: `MI-${year}${String(month).padStart(2, '0')}-${project.projectNumber}`,
+          projectId: project.id,
+          customerId: project.customerId,
+          month,
+          year,
+          usageEntries: [],
+          subtotal: 0,
+          taxRate,
+          taxAmount: 0,
+          total: 0,
+          status: 'draft',
+          date: startDate.toISOString(),
+          dueDate: endDate.toISOString(),
+          paidAmount: 0,
+          notes: '',
+        }),
+      })
+      if (res.ok) {
+        const inv = await res.json()
+        alert(`Monthly invoice created: ${inv.invoiceNumber}`)
+        const invRes = await fetch(`/api/monthly-invoices?projectId=${project.id}`)
+        const list = invRes.ok ? await invRes.json() : []
+        setMonthlyInvoices(list || [])
+      } else {
+        alert("Failed to create monthly invoice.")
+      }
+    } catch (e) {
+      console.error(e)
+      alert("Failed to create monthly invoice.")
     }
   }
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    )
+  }
   if (!project) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -55,10 +125,6 @@ export default function ProjectDetailPage() {
       </div>
     )
   }
-
-  const customer = customerService.getById(project.customerId)
-  const quotation = quotationService.getById(project.quotationId)
-  const vehicles = project.assignedVehicles.map(vId => vehicleService.getById(vId)).filter(Boolean)
 
   // Calculate totals
   const totalHours = usageEntries.filter(u => !u.invoiced).reduce((sum, u) => sum + (u.hours || 0), 0)
@@ -117,7 +183,7 @@ export default function ProjectDetailPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
-        <Card className="border-2 border-blue-200/60">
+        <Card className="border-2 border-blue-400 dark:border-blue-800/60">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3">
               <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-blue-800 rounded-full"></div>
@@ -193,7 +259,7 @@ export default function ProjectDetailPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-2 border-blue-200/60">
+        <Card className="border-2 border-blue-400 dark:border-blue-800/60">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3">
               <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-blue-800 rounded-full"></div>
@@ -226,7 +292,7 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* Usage Entries List */}
-      <Card className="border-2 border-blue-200/60">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -245,8 +311,8 @@ export default function ProjectDetailPage() {
         <CardContent>
           <div className="rounded-lg border border-blue-100 dark:border-blue-800 overflow-hidden">
             <table className="w-full">
-              <thead className="bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-900/50 dark:to-blue-800/50">
-                <tr className="border-b-2 border-blue-200 dark:border-blue-800">
+              <thead className="bg-white dark:bg-blue-900/50">
+                <tr className="border-b-2 border-blue-400 dark:border-blue-700">
                   <th className="text-left p-3 font-bold text-blue-900 dark:text-blue-100">Date</th>
                   <th className="text-left p-3 font-bold text-blue-900 dark:text-blue-100">Vehicle</th>
                   {project.billingType === 'hours' && (
@@ -269,7 +335,7 @@ export default function ProjectDetailPage() {
                   </tr>
                 ) : (
                   usageEntries.map((entry) => {
-                    const vehicle = vehicleService.getById(entry.vehicleId)
+                    const vehicle = (vehicles || []).find((v: any) => v.id === entry.vehicleId)
                     return (
                       <tr key={entry.id} className="border-b border-blue-100 dark:border-blue-800 hover:bg-blue-50/30 dark:hover:bg-blue-900/30">
                         <td className="p-3 text-gray-700 dark:text-gray-300">{formatDate(entry.date)}</td>
@@ -311,7 +377,7 @@ export default function ProjectDetailPage() {
           <CardContent>
             <div className="space-y-3">
               {monthlyInvoices.map((invoice) => (
-                <div key={invoice.id} className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-white dark:from-blue-900/50 dark:to-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                <div key={invoice.id} className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-white dark:from-blue-900/50 dark:to-blue-900/30 rounded-lg border border-blue-400 dark:border-blue-800">
                   <div>
                     <p className="font-semibold text-blue-900 dark:text-blue-100">{invoice.invoiceNumber}</p>
                     <p className="text-sm text-gray-600 dark:text-gray-300">
@@ -329,13 +395,12 @@ export default function ProjectDetailPage() {
                       variant="ghost" 
                       size="sm" 
                       className="hover:bg-blue-100 dark:hover:bg-blue-900"
-                      onClick={() => {
-                        // Find invoice in regular invoice system
-                        const invoices = invoiceService.getAll()
-                        const regularInvoice = invoices.find(inv => inv.invoiceNumber === invoice.invoiceNumber)
-                        if (regularInvoice) {
-                          router.push(`/invoices/${regularInvoice.id}`)
-                        }
+                      onClick={async () => {
+                        const res = await fetch('/api/invoices')
+                        if (!res.ok) return
+                        const invoices = await res.json()
+                        const regularInvoice = (invoices || []).find((inv: any) => inv.invoiceNumber === invoice.invoiceNumber)
+                        if (regularInvoice) router.push(`/invoices/${regularInvoice.id}`)
                       }}
                     >
                       <FileText className="h-4 w-4" />

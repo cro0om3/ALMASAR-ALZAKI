@@ -5,8 +5,6 @@ import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
-import { projectService } from "@/lib/data/project-service"
-import { vehicleService } from "@/lib/data"
 import { Project } from "@/types/project"
 import { Truck } from "lucide-react"
 
@@ -19,15 +17,28 @@ export default function AssignVehiclesPage() {
 
   useEffect(() => {
     const id = params.id as string
-    const p = projectService.getById(id)
-    if (p) {
-      setProject(p)
-      setSelectedVehicles(p.assignedVehicles || [])
+    if (!id) return
+    let cancelled = false
+    const load = async () => {
+      try {
+        const [pRes, vRes] = await Promise.all([
+          fetch(`/api/projects/${id}`),
+          fetch('/api/vehicles'),
+        ])
+        if (cancelled) return
+        const p = pRes.ok ? await pRes.json() : null
+        const vehiclesList = vRes.ok ? await vRes.json() : []
+        if (p) {
+          setProject(p)
+          setSelectedVehicles(p.assignedVehicles || [])
+        } else setProject(null)
+        setAllVehicles((vehiclesList || []).filter((v: any) => v.status === 'active'))
+      } catch (_e) {
+        if (!cancelled) setProject(null)
+      }
     }
-    
-    // Get all active vehicles
-    const vehicles = vehicleService.getAll().filter(v => v.status === 'active')
-    setAllVehicles(vehicles)
+    load()
+    return () => { cancelled = true }
   }, [params.id])
 
   const handleToggleVehicle = (vehicleId: string) => {
@@ -40,11 +51,23 @@ export default function AssignVehiclesPage() {
     })
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!project) return
-    
-    projectService.assignVehicles(project.id, selectedVehicles)
-    router.push(`/projects/${project.id}`)
+    try {
+      const res = await fetch(`/api/projects/${project.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignedVehicles: selectedVehicles }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to update project')
+      }
+      router.push(`/projects/${project.id}`)
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.message || 'Failed to update project')
+    }
   }
 
   if (!project) {
@@ -66,7 +89,7 @@ export default function AssignVehiclesPage() {
         </div>
       </div>
 
-      <Card className="border-2 border-blue-200/60">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60">
         <CardHeader className="pb-4">
           <div className="flex items-center gap-3">
             <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-blue-800 rounded-full"></div>
@@ -81,7 +104,7 @@ export default function AssignVehiclesPage() {
               {allVehicles.map((vehicle) => (
                 <div
                   key={vehicle.id}
-                  className="flex items-center gap-4 p-4 border-2 border-blue-200/60 rounded-lg hover:border-blue-400 transition-colors cursor-pointer"
+                  className="flex items-center gap-4 p-4 border-2 border-blue-400 dark:border-blue-800/60 rounded-lg hover:border-blue-400 transition-colors cursor-pointer"
                   onClick={() => handleToggleVehicle(vehicle.id)}
                 >
                   <Checkbox

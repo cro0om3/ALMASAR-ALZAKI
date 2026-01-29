@@ -15,7 +15,7 @@ export function AnimatedCard({ children, className, hover = true, delay = 0 }: A
   return (
     <Card
       className={cn(
-        "border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card transition-all duration-300 bg-gradient-card",
+        "border-2 border-blue-400 dark:border-blue-800/60 shadow-card transition-all duration-300 bg-gradient-card",
         hover && "hover:shadow-card-hover hover:scale-[1.02] hover:border-blue-300 dark:hover:border-blue-700",
         className
       )}

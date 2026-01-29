@@ -24,16 +24,22 @@ CREATE TABLE IF NOT EXISTS "users" (
 -- ============================================
 CREATE TABLE IF NOT EXISTS "customers" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "name" TEXT NOT NULL,
-    "email" TEXT NOT NULL UNIQUE,
-    "phone" TEXT NOT NULL,
-    "address" TEXT NOT NULL,
-    "city" TEXT NOT NULL,
-    "state" TEXT NOT NULL,
-    "zipCode" TEXT NOT NULL,
-    "country" TEXT NOT NULL,
+    "name" TEXT,
+    "email" TEXT UNIQUE,
+    "phone" TEXT,
+    "address" TEXT,
+    "city" TEXT,
+    "state" TEXT,
+    "zipCode" TEXT,
+    "country" TEXT,
+    -- Identity and residence fields (optional)
+    "idNumber" TEXT,
+    "passportNumber" TEXT,
+    "residenceIssueDate" TIMESTAMP(3),
+    "residenceExpiryDate" TIMESTAMP(3),
+    "nationality" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ============================================
@@ -41,17 +47,17 @@ CREATE TABLE IF NOT EXISTS "customers" (
 -- ============================================
 CREATE TABLE IF NOT EXISTS "vendors" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "name" TEXT NOT NULL,
-    "email" TEXT NOT NULL UNIQUE,
-    "phone" TEXT NOT NULL,
-    "address" TEXT NOT NULL,
-    "city" TEXT NOT NULL,
-    "state" TEXT NOT NULL,
-    "zipCode" TEXT NOT NULL,
-    "country" TEXT NOT NULL,
-    "contactPerson" TEXT NOT NULL,
+    "name" TEXT,
+    "email" TEXT UNIQUE,
+    "phone" TEXT,
+    "address" TEXT,
+    "city" TEXT,
+    "state" TEXT,
+    "zipCode" TEXT,
+    "country" TEXT,
+    "contactPerson" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ============================================
@@ -281,6 +287,107 @@ CREATE TABLE IF NOT EXISTS "payslips" (
 );
 
 -- ============================================
+-- 14. جدول المشاريع (Projects)
+-- ============================================
+CREATE TABLE IF NOT EXISTS "projects" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "projectNumber" TEXT NOT NULL,
+    "quotationId" TEXT NOT NULL,
+    "customerId" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "description" TEXT,
+    "startDate" TIMESTAMP(3) NOT NULL,
+    "endDate" TIMESTAMP(3),
+    "billingType" TEXT NOT NULL DEFAULT 'hours',
+    "hourlyRate" DOUBLE PRECISION,
+    "dailyRate" DOUBLE PRECISION,
+    "fixedAmount" DOUBLE PRECISION,
+    "poNumber" TEXT,
+    "poDate" TIMESTAMP(3),
+    "poReceived" BOOLEAN NOT NULL DEFAULT false,
+    "assignedVehicles" JSONB DEFAULT '[]',
+    "status" TEXT NOT NULL DEFAULT 'draft',
+    "terms" TEXT,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "projects_quotationId_fkey" FOREIGN KEY ("quotationId") REFERENCES "quotations"("id") ON DELETE CASCADE,
+    CONSTRAINT "projects_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "customers"("id") ON DELETE CASCADE
+);
+
+-- ============================================
+-- 15. جدول سجلات الاستخدام (Usage Entries)
+-- ============================================
+CREATE TABLE IF NOT EXISTS "usage_entries" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "projectId" TEXT NOT NULL,
+    "vehicleId" TEXT NOT NULL,
+    "date" TIMESTAMP(3) NOT NULL,
+    "hours" DOUBLE PRECISION,
+    "days" DOUBLE PRECISION,
+    "startTime" TEXT,
+    "endTime" TEXT,
+    "description" TEXT NOT NULL,
+    "location" TEXT,
+    "rate" DOUBLE PRECISION NOT NULL,
+    "total" DOUBLE PRECISION NOT NULL,
+    "invoiced" BOOLEAN NOT NULL DEFAULT false,
+    "invoiceId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "usage_entries_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "projects"("id") ON DELETE CASCADE
+);
+
+-- ============================================
+-- 16. جدول الفواتير الشهرية (Monthly Invoices)
+-- ============================================
+CREATE TABLE IF NOT EXISTS "monthly_invoices" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "invoiceNumber" TEXT NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "customerId" TEXT NOT NULL,
+    "month" INTEGER NOT NULL,
+    "year" INTEGER NOT NULL,
+    "usageEntries" JSONB DEFAULT '[]',
+    "totalHours" DOUBLE PRECISION,
+    "totalDays" DOUBLE PRECISION,
+    "subtotal" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "taxRate" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "taxAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "total" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "status" TEXT NOT NULL DEFAULT 'draft',
+    "date" TIMESTAMP(3) NOT NULL,
+    "dueDate" TIMESTAMP(3) NOT NULL,
+    "paidAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "monthly_invoices_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "projects"("id") ON DELETE CASCADE,
+    CONSTRAINT "monthly_invoices_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "customers"("id") ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS "projects_quotationId_idx" ON "projects"("quotationId");
+CREATE INDEX IF NOT EXISTS "projects_customerId_idx" ON "projects"("customerId");
+CREATE INDEX IF NOT EXISTS "usage_entries_projectId_idx" ON "usage_entries"("projectId");
+CREATE INDEX IF NOT EXISTS "monthly_invoices_projectId_idx" ON "monthly_invoices"("projectId");
+
+-- ============================================
+-- 17. جدول إعدادات التطبيق (App Settings) - اللوقو والإعدادات
+-- ============================================
+CREATE TABLE IF NOT EXISTS "app_settings" (
+    "id" TEXT NOT NULL PRIMARY KEY DEFAULT 'default',
+    "settings" JSONB NOT NULL DEFAULT '{}',
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================
+-- Storage: إنشاء bucket للوقو من لوحة Supabase
+-- ============================================
+-- من Storage > New bucket أنشئ bucket باسم: company-assets
+-- واختر Public حتى يكون رابط اللوقو متاحاً للعرض.
+-- ============================================
+
+-- ============================================
 -- إنشاء Indexes لتحسين الأداء
 -- ============================================
 CREATE INDEX IF NOT EXISTS "quotations_customerId_idx" ON "quotations"("customerId");
@@ -349,8 +456,58 @@ CREATE TRIGGER update_receipts_updated_at BEFORE UPDATE ON "receipts"
 CREATE TRIGGER update_payslips_updated_at BEFORE UPDATE ON "payslips" 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON "projects" 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_usage_entries_updated_at BEFORE UPDATE ON "usage_entries" 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_monthly_invoices_updated_at BEFORE UPDATE ON "monthly_invoices" 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_app_settings_updated_at BEFORE UPDATE ON "app_settings" 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
+-- تعطيل Row Level Security (RLS)
+-- الكل يشوف كل شيء - شركة واحدة
+-- ============================================
+ALTER TABLE IF EXISTS "app_settings" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS "users" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS "customers" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS "vendors" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS "vehicles" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS "employees" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS "quotations" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS "quotation_items" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS "invoices" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS "invoice_items" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS "purchase_orders" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS "purchase_order_items" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS "receipts" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS "payslips" DISABLE ROW LEVEL SECURITY;
+
+-- حذف أي RLS Policies موجودة (إن وجدت)
+DROP POLICY IF EXISTS "Enable all operations for all users" ON "users";
+DROP POLICY IF EXISTS "Enable all operations for all users" ON "customers";
+DROP POLICY IF EXISTS "Enable all operations for all users" ON "vendors";
+DROP POLICY IF EXISTS "Enable all operations for all users" ON "vehicles";
+DROP POLICY IF EXISTS "Enable all operations for all users" ON "employees";
+DROP POLICY IF EXISTS "Enable all operations for all users" ON "quotations";
+DROP POLICY IF EXISTS "Enable all operations for all users" ON "quotation_items";
+DROP POLICY IF EXISTS "Enable all operations for all users" ON "invoices";
+DROP POLICY IF EXISTS "Enable all operations for all users" ON "invoice_items";
+DROP POLICY IF EXISTS "Enable all operations for all users" ON "purchase_orders";
+DROP POLICY IF EXISTS "Enable all operations for all users" ON "purchase_order_items";
+DROP POLICY IF EXISTS "Enable all operations for all users" ON "receipts";
+DROP POLICY IF EXISTS "Enable all operations for all users" ON "payslips";
+DROP POLICY IF EXISTS "Enable all operations for all users" ON "projects";
+DROP POLICY IF EXISTS "Enable all operations for all users" ON "usage_entries";
+DROP POLICY IF EXISTS "Enable all operations for all users" ON "monthly_invoices";
+
 -- ============================================
 -- ✅ تم إنشاء جميع الجداول بنجاح!
+-- ✅ تم تعطيل RLS - الكل يشوف كل شيء
 -- ============================================
 -- للتحقق من الجداول، شغّل:
 -- SELECT table_name FROM information_schema.tables 

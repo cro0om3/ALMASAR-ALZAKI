@@ -46,6 +46,8 @@ interface DocumentTimelineProps {
   }>
   onQuickConvert?: (type: 'po' | 'invoice' | 'receipt', id?: string) => void
   currentDocumentType?: 'quotation' | 'purchase_order' | 'invoice' | 'receipt'
+  /** When true, hides the "Next Step" button (e.g. when the same action is already in the page header) */
+  hideNextStepButton?: boolean
 }
 
 export function DocumentTimeline({
@@ -55,6 +57,7 @@ export function DocumentTimeline({
   receipts = [],
   onQuickConvert,
   currentDocumentType,
+  hideNextStepButton = false,
 }: DocumentTimelineProps) {
   // Define all possible steps in order
   const allSteps = [
@@ -277,7 +280,7 @@ export function DocumentTimeline({
   const nextStep = getNextStep()
 
   return (
-    <Card className="border-2 border-blue-200/60 shadow-card">
+    <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card">
       <CardContent className="p-6">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-blue-800 rounded-full"></div>
@@ -348,8 +351,8 @@ export function DocumentTimeline({
           </div>
         )}
 
-        {nextStep && onQuickConvert && (
-          <div className="mt-6 pt-6 border-t border-blue-200 dark:border-blue-800">
+        {nextStep && onQuickConvert && !hideNextStepButton && (
+          <div className="mt-6 pt-6 border-t border-blue-400 dark:border-blue-800">
             <div className="flex items-center gap-2 mb-3">
               <ArrowRight className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               <span className="font-semibold text-blue-900 dark:text-blue-100">Next Step</span>

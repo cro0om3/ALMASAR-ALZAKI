@@ -92,7 +92,7 @@ export function BulkActions<T>({
   }
 
   return (
-    <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-900/30 dark:to-blue-800/30">
+    <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-900/30 dark:to-blue-800/30">
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">

@@ -17,7 +17,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Card } from "@/components/ui/card"
-import { receiptService, invoiceService, customerService, settingsService } from "@/lib/data"
 import { formatCurrency } from "@/lib/utils"
 import { FileUpload } from "@/components/shared/FileUpload"
 import { aiService } from "@/lib/services/ai-service"
@@ -26,11 +25,11 @@ import { LoadingSpinner } from "@/components/shared/LoadingSpinner"
 import { Image, Upload, Sparkles } from "lucide-react"
 
 const receiptSchema = z.object({
-  invoiceId: z.string().min(1, "Invoice is required"),
-  date: z.string().min(1, "Date is required"),
-  paymentDate: z.string().min(1, "Payment date is required"),
-  amount: z.number().min(0.01, "Amount must be greater than 0"),
-  paymentMethod: z.enum(["cash", "bank_transfer", "cheque", "credit_card", "other"]),
+  invoiceId: z.string().optional(),
+  date: z.string().optional(),
+  paymentDate: z.string().optional(),
+  amount: z.number().min(0.01, "Amount must be greater than 0").optional(),
+  paymentMethod: z.enum(["cash", "bank_transfer", "cheque", "credit_card", "other"]).optional(),
   referenceNumber: z.string().optional(),
   bankName: z.string().optional(),
   notes: z.string().optional(),
@@ -45,6 +44,7 @@ function ReceiptForm() {
   const { toast } = useToast()
   const invoiceId = searchParams.get("invoiceId")
   const [invoices, setInvoices] = useState<any[]>([])
+  const [allReceipts, setAllReceipts] = useState<any[]>([])
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null)
   const [remainingAmount, setRemainingAmount] = useState(0)
   const [paymentImage, setPaymentImage] = useState<string | null>(null)
@@ -72,49 +72,69 @@ function ReceiptForm() {
   })
 
   useEffect(() => {
-    const allInvoices = invoiceService.getAll()
-    const invoicesWithCustomers = allInvoices.map(inv => ({
-      ...inv,
-      customer: customerService.getById(inv.customerId),
-    }))
-    setInvoices(invoicesWithCustomers)
+    let cancelled = false
+    const load = async () => {
+      try {
+        const [invRes, custRes, rcpRes] = await Promise.all([
+          fetch('/api/invoices'),
+          fetch('/api/customers'),
+          fetch('/api/receipts'),
+        ])
+        if (cancelled) return
+        const allInvoices = invRes.ok ? await invRes.json() : []
+        const customers = custRes.ok ? await custRes.json() : []
+        const receiptsList = rcpRes.ok ? await rcpRes.json() : []
+        const customersById = (customers || []).reduce((acc: Record<string, any>, c: any) => { acc[c.id] = c; return acc }, {})
+        const invoicesWithCustomers = (allInvoices || []).map((inv: any) => ({
+          ...inv,
+          customer: customersById[inv.customerId],
+        }))
+        setInvoices(invoicesWithCustomers)
+        setAllReceipts(receiptsList || [])
 
-    if (invoiceId) {
-      const inv = invoiceService.getById(invoiceId)
-      if (inv) {
-        setSelectedInvoice(inv)
-        setValue("invoiceId", invoiceId)
-        const receipts = receiptService.getByInvoiceId(invoiceId)
-        const totalPaid = receipts
-          .filter(r => r.status !== 'cancelled')
-          .reduce((sum, r) => sum + r.amount, 0)
-        const remaining = inv.total - totalPaid
-        setRemainingAmount(remaining)
-        setValue("amount", remaining > 0 ? remaining : 0)
+        if (invoiceId) {
+          const inv = (invoicesWithCustomers as any[]).find((i: any) => i.id === invoiceId)
+          if (inv) {
+            setSelectedInvoice(inv)
+            setValue("invoiceId", invoiceId)
+            const receipts = (receiptsList || []).filter((r: any) => r.invoiceId === invoiceId)
+            const totalPaid = receipts
+              .filter((r: any) => r.status !== 'cancelled')
+              .reduce((sum: number, r: any) => sum + r.amount, 0)
+            const remaining = inv.total - totalPaid
+            setRemainingAmount(remaining)
+            setValue("amount", remaining > 0 ? remaining : 0)
+          }
+        }
+      } catch (_e) {
+        if (!cancelled) setInvoices([])
       }
     }
+    load()
+    return () => { cancelled = true }
   }, [invoiceId, setValue])
 
   const watchedInvoiceId = watch("invoiceId")
   const watchedAmount = watch("amount")
 
   useEffect(() => {
-    if (watchedInvoiceId) {
-      const inv = invoiceService.getById(watchedInvoiceId)
+    if (watchedInvoiceId && invoices.length > 0) {
+      const inv = invoices.find((i: any) => i.id === watchedInvoiceId)
       if (inv) {
         setSelectedInvoice(inv)
-        const receipts = receiptService.getByInvoiceId(watchedInvoiceId)
+        const receipts = allReceipts.filter((r: any) => r.invoiceId === watchedInvoiceId)
         const totalPaid = receipts
-          .filter(r => r.status !== 'cancelled')
-          .reduce((sum, r) => sum + r.amount, 0)
+          .filter((r: any) => r.status !== 'cancelled')
+          .reduce((sum: number, r: any) => sum + r.amount, 0)
         const remaining = inv.total - totalPaid
         setRemainingAmount(remaining)
-        if (watchedAmount === 0 || watchedAmount > remaining) {
+        const amt = watchedAmount ?? 0
+        if (amt === 0 || amt > remaining) {
           setValue("amount", remaining > 0 ? remaining : 0)
         }
       }
     }
-  }, [watchedInvoiceId, watchedAmount, setValue])
+  }, [watchedInvoiceId, watchedAmount, setValue, invoices, allReceipts])
 
   const handleImageUpload = async (file: File) => {
     return new Promise<string>((resolve, reject) => {
@@ -195,26 +215,38 @@ function ReceiptForm() {
     }
   }
 
-  const onSubmit = (data: ReceiptFormData) => {
+  const onSubmit = async (data: ReceiptFormData) => {
     if (!selectedInvoice) return
-
-    const receiptData = {
-      receiptNumber: settingsService.generateReceiptNumber(),
-      invoiceId: data.invoiceId,
-      customerId: selectedInvoice.customerId,
-      date: data.date,
-      paymentDate: data.paymentDate,
-      amount: data.amount,
-      paymentMethod: data.paymentMethod,
-      referenceNumber: data.referenceNumber || undefined,
-      bankName: data.bankName || undefined,
-      notes: data.notes || undefined,
-      paymentImageUrl: data.paymentImageUrl || undefined,
-      status: "issued" as const,
+    try {
+      const receiptNumber = `RCP-${new Date().toISOString().slice(0, 10)}-${Math.random().toString(36).slice(2, 9)}`
+      const receiptData = {
+        receiptNumber,
+        invoiceId: data.invoiceId,
+        customerId: selectedInvoice.customerId,
+        date: data.date,
+        paymentDate: data.paymentDate,
+        amount: data.amount,
+        paymentMethod: data.paymentMethod,
+        referenceNumber: data.referenceNumber || undefined,
+        bankName: data.bankName || undefined,
+        notes: data.notes || undefined,
+        paymentImageUrl: data.paymentImageUrl || undefined,
+        status: "issued" as const,
+      }
+      const res = await fetch('/api/receipts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(receiptData),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to create receipt')
+      }
+      router.push("/receipts")
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.message || 'Failed to create receipt')
     }
-
-    receiptService.create(receiptData)
-    router.push("/receipts")
   }
 
   return (
@@ -229,35 +261,40 @@ function ReceiptForm() {
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        <Card className="border-2 border-blue-200/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
+        <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
           <h2 className="text-xl font-semibold text-blue-900 mb-6 flex items-center gap-2">
             <span className="w-1 h-6 bg-gold rounded"></span>
             Receipt Information
           </h2>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="invoiceId" className="text-blue-900 font-medium">Invoice *</Label>
+              <Label htmlFor="invoiceId" className="text-blue-900 font-medium">Invoice</Label>
               <Select
                 value={watch("invoiceId")}
                 onValueChange={(value) => setValue("invoiceId", value)}
               >
-                <SelectTrigger className="h-12 border-2 border-blue-200/60">
+                <SelectTrigger className="h-12 border-2 border-blue-400 dark:border-blue-800/60">
                   <SelectValue placeholder="Select invoice" />
                 </SelectTrigger>
                 <SelectContent>
                   {invoices
-                    .filter(inv => {
-                      const receipts = receiptService.getByInvoiceId(inv.id)
+                    .filter((inv: any) => {
+                      const receipts = allReceipts.filter((r: any) => r.invoiceId === inv.id)
                       const totalPaid = receipts
-                        .filter(r => r.status !== 'cancelled')
-                        .reduce((sum, r) => sum + r.amount, 0)
+                        .filter((r: any) => r.status !== 'cancelled')
+                        .reduce((sum: number, r: any) => sum + r.amount, 0)
                       return totalPaid < inv.total && inv.status !== 'cancelled'
                     })
-                    .map((invoice) => (
+                    .map((invoice: any) => {
+                      const receipts = allReceipts.filter((r: any) => r.invoiceId === invoice.id)
+                      const totalPaid = receipts
+                        .filter((r: any) => r.status !== 'cancelled')
+                        .reduce((sum: number, r: any) => sum + r.amount, 0)
+                      return (
                       <SelectItem key={invoice.id} value={invoice.id}>
-                        {invoice.invoiceNumber} - {invoice.customer?.name} - {formatCurrency(invoice.total)} (Paid: {formatCurrency(invoice.paidAmount || 0)})
+                        {invoice.invoiceNumber} - {invoice.customer?.name} - {formatCurrency(invoice.total)} (Paid: {formatCurrency(totalPaid)})
                       </SelectItem>
-                    ))}
+                    )})}
                 </SelectContent>
               </Select>
               {errors.invoiceId && (
@@ -268,7 +305,7 @@ function ReceiptForm() {
             {selectedInvoice && (
               <div className="space-y-2">
                 <Label className="text-blue-900 font-medium">Invoice Details</Label>
-                <div className="p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
+                <div className="p-4 bg-blue-50 rounded-lg border-2 border-blue-400 dark:border-blue-800">
                   <p className="font-semibold text-blue-900">Total: {formatCurrency(selectedInvoice.total)}</p>
                   <p className="text-sm text-gray-600">Paid: {formatCurrency(selectedInvoice.paidAmount || 0)}</p>
                   <p className="text-sm font-semibold text-gold">Remaining: {formatCurrency(remainingAmount)}</p>
@@ -277,7 +314,7 @@ function ReceiptForm() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="date" className="text-blue-900 font-medium">Receipt Date *</Label>
+              <Label htmlFor="date" className="text-blue-900 font-medium">Receipt Date</Label>
               <Input type="date" {...register("date")} className="h-12" />
               {errors.date && (
                 <p className="text-sm text-red-600">{errors.date.message}</p>
@@ -285,7 +322,7 @@ function ReceiptForm() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="paymentDate" className="text-blue-900 font-medium">Payment Date *</Label>
+              <Label htmlFor="paymentDate" className="text-blue-900 font-medium">Payment Date</Label>
               <Input type="date" {...register("paymentDate")} className="h-12" />
               {errors.paymentDate && (
                 <p className="text-sm text-red-600">{errors.paymentDate.message}</p>
@@ -293,7 +330,7 @@ function ReceiptForm() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="amount" className="text-blue-900 font-medium">Amount *</Label>
+              <Label htmlFor="amount" className="text-blue-900 font-medium">Amount</Label>
               <div className="relative">
                 <Input
                   type="number"
@@ -307,18 +344,18 @@ function ReceiptForm() {
               {errors.amount && (
                 <p className="text-sm text-red-600">{errors.amount.message}</p>
               )}
-              {watchedAmount > remainingAmount && (
+              {(watchedAmount ?? 0) > remainingAmount && (
                 <p className="text-sm text-red-600">Amount cannot exceed remaining balance: {formatCurrency(remainingAmount)}</p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="paymentMethod" className="text-blue-900 font-medium">Payment Method *</Label>
+              <Label htmlFor="paymentMethod" className="text-blue-900 font-medium">Payment Method</Label>
               <Select
                 value={watch("paymentMethod")}
                 onValueChange={(value) => setValue("paymentMethod", value as any)}
               >
-                <SelectTrigger className="h-12 border-2 border-blue-200/60">
+                <SelectTrigger className="h-12 border-2 border-blue-400 dark:border-blue-800/60">
                   <SelectValue placeholder="Select payment method" />
                 </SelectTrigger>
                 <SelectContent>
@@ -363,13 +400,13 @@ function ReceiptForm() {
 
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="notes" className="text-blue-900 font-medium">Notes</Label>
-              <Textarea {...register("notes")} rows={4} className="border-2 border-blue-200/60" />
+              <Textarea {...register("notes")} rows={4} className="border-2 border-blue-400 dark:border-blue-800/60" />
             </div>
           </div>
         </Card>
 
         {/* Payment Image Upload */}
-        <Card className="border-2 border-blue-200/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
+        <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
           <h2 className="text-xl font-semibold text-blue-900 mb-6 flex items-center gap-2">
             <span className="w-1 h-6 bg-gold rounded"></span>
             Payment Proof Image
@@ -394,7 +431,7 @@ function ReceiptForm() {
                   <img
                     src={`data:image/jpeg;base64,${paymentImage}`}
                     alt="Payment proof"
-                    className="max-w-full h-auto max-h-64 rounded-lg border-2 border-blue-200/60"
+                    className="max-w-full h-auto max-h-64 rounded-lg border-2 border-blue-400 dark:border-blue-800/60"
                   />
                 </div>
                 <Button
@@ -439,7 +476,7 @@ function ReceiptForm() {
             type="submit"
             variant="gold"
             className="bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-blue-900 hover:from-yellow-500 hover:via-yellow-600 hover:to-yellow-700 shadow-gold hover:shadow-xl font-bold border-2 border-yellow-300/50 px-8 py-3"
-            disabled={watchedAmount > remainingAmount || watchedAmount <= 0}
+            disabled={(watchedAmount ?? 0) > remainingAmount || (watchedAmount ?? 0) <= 0}
           >
             Create Receipt
           </Button>

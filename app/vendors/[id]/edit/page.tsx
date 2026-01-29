@@ -8,19 +8,18 @@ import * as z from "zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { vendorService } from "@/lib/data"
 import { Vendor } from "@/types"
 
 const vendorSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email address"),
-  phone: z.string().min(1, "Phone is required"),
-  address: z.string().min(1, "Address is required"),
-  city: z.string().min(1, "City is required"),
-  state: z.string().min(1, "State is required"),
-  zipCode: z.string().min(1, "Zip code is required"),
-  country: z.string().min(1, "Country is required"),
-  contactPerson: z.string().min(1, "Contact person is required"),
+  name: z.string().optional(),
+  email: z.string().email("Invalid email address").optional().or(z.literal("")),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
+  country: z.string().optional(),
+  contactPerson: z.string().optional(),
   // Identity and residence fields (optional)
   idNumber: z.string().optional(),
   passportNumber: z.string().optional(),
@@ -35,6 +34,8 @@ export default function EditVendorPage() {
   const params = useParams()
   const router = useRouter()
   const [vendor, setVendor] = useState<Vendor | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
 
   const {
     register,
@@ -47,24 +48,57 @@ export default function EditVendorPage() {
 
   useEffect(() => {
     const id = params.id as string
-    const v = vendorService.getById(id)
-    if (v) {
-      setVendor(v)
-      reset(v)
-    }
+    if (!id) return
+    let cancelled = false
+    setLoading(true)
+    fetch(`/api/vendors/${id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((v) => {
+        if (cancelled) return
+        if (v) {
+          setVendor(v)
+          reset(v)
+        } else setVendor(null)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => { cancelled = true }
   }, [params.id, reset])
 
-  const onSubmit = (data: VendorFormData) => {
-    if (vendor) {
-      vendorService.update(vendor.id, data)
+  const onSubmit = async (data: VendorFormData) => {
+    if (!vendor) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/vendors/${vendor.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to update vendor')
+      }
       router.push(`/vendors/${vendor.id}`)
+    } catch (e: any) {
+      alert(e?.message || 'Failed to update vendor')
+    } finally {
+      setSaving(false)
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    )
   }
 
   if (!vendor) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Loading...</p>
+        <p className="text-muted-foreground">Vendor not found</p>
       </div>
     )
   }
@@ -79,7 +113,7 @@ export default function EditVendorPage() {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="name">Name *</Label>
+            <Label htmlFor="name">Name</Label>
             <Input id="name" {...register("name")} />
             {errors.name && (
               <p className="text-sm text-destructive">{errors.name.message}</p>
@@ -87,7 +121,7 @@ export default function EditVendorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="email">Email *</Label>
+            <Label htmlFor="email">Email</Label>
             <Input id="email" type="email" {...register("email")} />
             {errors.email && (
               <p className="text-sm text-destructive">{errors.email.message}</p>
@@ -95,7 +129,7 @@ export default function EditVendorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="phone">Phone *</Label>
+            <Label htmlFor="phone">Phone</Label>
             <Input id="phone" {...register("phone")} />
             {errors.phone && (
               <p className="text-sm text-destructive">{errors.phone.message}</p>
@@ -103,7 +137,7 @@ export default function EditVendorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="contactPerson">Contact Person *</Label>
+            <Label htmlFor="contactPerson">Contact Person</Label>
             <Input id="contactPerson" {...register("contactPerson")} />
             {errors.contactPerson && (
               <p className="text-sm text-destructive">{errors.contactPerson.message}</p>
@@ -111,7 +145,7 @@ export default function EditVendorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="address">Address *</Label>
+            <Label htmlFor="address">Address</Label>
             <Input id="address" {...register("address")} />
             {errors.address && (
               <p className="text-sm text-destructive">{errors.address.message}</p>
@@ -119,7 +153,7 @@ export default function EditVendorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="city">City *</Label>
+            <Label htmlFor="city">City</Label>
             <Input id="city" {...register("city")} />
             {errors.city && (
               <p className="text-sm text-destructive">{errors.city.message}</p>
@@ -127,7 +161,7 @@ export default function EditVendorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="state">State *</Label>
+            <Label htmlFor="state">State</Label>
             <Input id="state" {...register("state")} />
             {errors.state && (
               <p className="text-sm text-destructive">{errors.state.message}</p>
@@ -135,7 +169,7 @@ export default function EditVendorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="zipCode">Zip Code *</Label>
+            <Label htmlFor="zipCode">Zip Code</Label>
             <Input id="zipCode" {...register("zipCode")} />
             {errors.zipCode && (
               <p className="text-sm text-destructive">{errors.zipCode.message}</p>
@@ -143,7 +177,7 @@ export default function EditVendorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="country">Country *</Label>
+            <Label htmlFor="country">Country</Label>
             <Input id="country" {...register("country")} />
             {errors.country && (
               <p className="text-sm text-destructive">{errors.country.message}</p>
@@ -151,7 +185,7 @@ export default function EditVendorPage() {
           </div>
         </div>
 
-        <div className="border-2 border-blue-200/60 p-6 rounded-lg">
+        <div className="border-2 border-blue-400 dark:border-blue-800/60 p-6 rounded-lg">
           <h2 className="text-xl font-semibold text-blue-900 mb-4 flex items-center gap-2">
             <span className="w-1 h-6 bg-gold rounded"></span>
             Identity & Residence Information
@@ -211,9 +245,10 @@ export default function EditVendorPage() {
           <Button 
             type="submit"
             variant="gold"
+            disabled={saving}
             className="bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-blue-900 hover:from-yellow-500 hover:via-yellow-600 hover:to-yellow-700 shadow-gold hover:shadow-xl font-bold border-2 border-yellow-300/50 px-8 py-3"
           >
-            Update Vendor
+            {saving ? 'Saving...' : 'Update Vendor'}
           </Button>
         </div>
       </form>

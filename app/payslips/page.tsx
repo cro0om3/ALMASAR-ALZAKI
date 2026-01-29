@@ -14,9 +14,8 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Search, Eye, Edit, Trash2, CreditCard, Calendar } from "lucide-react"
-import { payslipService } from "@/lib/data"
-import { employeeService } from "@/lib/data"
 import { Payslip } from "@/types"
+import type { Employee } from "@/types"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { PageHeader } from "@/components/shared/PageHeader"
@@ -25,33 +24,51 @@ import { Label } from "@/components/ui/label"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 
 export default function PayslipsPage() {
-  const [payslips, setPayslips] = useState<Payslip[]>([])
+  const [payslips, setPayslips] = useState<(Payslip & { employee?: Employee })[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [showGenerateModal, setShowGenerateModal] = useState(false)
   const [generateMonth, setGenerateMonth] = useState(new Date().getMonth() + 1)
   const [generateYear, setGenerateYear] = useState(new Date().getFullYear())
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
   const { canEdit, canDelete } = usePermissions()
 
-  useEffect(() => {
-    const loadPayslips = () => {
-      const allPayslips = payslipService.getAll()
-      const payslipsWithEmployees = allPayslips.map(p => ({
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      const [pRes, eRes] = await Promise.all([
+        fetch('/api/payslips'),
+        fetch('/api/employees'),
+      ])
+      if (!pRes.ok) throw new Error('Failed to load')
+      const allPayslips = await pRes.json()
+      const employees = eRes.ok ? await eRes.json() : []
+      const eMap = new Map((employees || []).map((e: Employee) => [e.id, e]))
+      setPayslips((allPayslips || []).map((p: Payslip) => ({
         ...p,
-        employee: employeeService.getById(p.employeeId),
-      }))
-      setPayslips(payslipsWithEmployees)
+        employee: eMap.get(p.employeeId),
+      })))
+    } catch (e) {
+      console.error(e)
+      setPayslips([])
+    } finally {
+      setLoading(false)
     }
-    loadPayslips()
+  }
+
+  useEffect(() => {
+    loadData()
   }, [])
 
-  const handleDelete = (id: string) => {
-    if (confirm("Are you sure you want to delete this payslip?")) {
-      payslipService.delete(id)
-      setPayslips(payslipService.getAll().map(p => ({
-        ...p,
-        employee: employeeService.getById(p.employeeId),
-      })))
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this payslip?")) return
+    try {
+      const res = await fetch(`/api/payslips/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete')
+      await loadData()
+    } catch (e) {
+      console.error(e)
+      alert('Failed to delete payslip.')
     }
   }
 
@@ -66,20 +83,51 @@ export default function PayslipsPage() {
     }
   }
 
-  const handleGenerateMonthly = () => {
-    const generated = payslipService.generateMonthlyPayslips(generateMonth, generateYear)
-    if (generated.length > 0) {
-      alert(`Generated ${generated.length} payslips for ${generateMonth}/${generateYear}`)
-      // Reload payslips
-      const allPayslips = payslipService.getAll()
-      const payslipsWithEmployees = allPayslips.map(p => ({
-        ...p,
-        employee: employeeService.getById(p.employeeId),
-      }))
-      setPayslips(payslipsWithEmployees)
-      setShowGenerateModal(false)
-    } else {
-      alert("No payslips generated. They may already exist for this month.")
+  const handleGenerateMonthly = async () => {
+    try {
+      const employeesRes = await fetch('/api/employees')
+      if (!employeesRes.ok) throw new Error('Failed to load employees')
+      const employees = await employeesRes.json()
+      if (!employees?.length) {
+        alert("No employees found to generate payslips.")
+        return
+      }
+      const startDate = new Date(generateYear, generateMonth - 1, 1)
+      const endDate = new Date(generateYear, generateMonth, 0)
+      const issueDate = new Date(generateYear, generateMonth - 1, 15)
+      let created = 0
+      for (const emp of employees) {
+        const payslipNumber = `PS-${generateYear}${String(generateMonth).padStart(2, '0')}-${emp.employeeNumber || emp.id.slice(-6)}`
+        const res = await fetch('/api/payslips', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            payslipNumber,
+            employeeId: emp.id,
+            payPeriodStart: startDate.toISOString(),
+            payPeriodEnd: endDate.toISOString(),
+            issueDate: issueDate.toISOString(),
+            baseSalary: emp.salary ?? 0,
+            overtime: 0,
+            bonuses: 0,
+            deductions: 0,
+            tax: 0,
+            netPay: emp.salary ?? 0,
+            status: 'draft',
+          }),
+        })
+        if (res.ok) created++
+      }
+      if (created > 0) {
+        alert(`Generated ${created} payslips for ${generateMonth}/${generateYear}`)
+        await loadData()
+        setShowGenerateModal(false)
+      } else {
+        alert("No payslips generated. They may already exist for this month.")
+      }
+    } catch (e) {
+      console.error(e)
+      alert("Failed to generate payslips.")
     }
   }
 
@@ -115,7 +163,7 @@ export default function PayslipsPage() {
       {/* Generate Modal */}
       {showGenerateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <Card className="w-full max-w-md p-6 border-2 border-blue-200/60 dark:border-blue-800/60">
+          <Card className="w-full max-w-md p-6 border-2 border-blue-400 dark:border-blue-800/60 dark:border-blue-800/60">
             <h2 className="text-2xl font-bold text-blue-900 dark:text-blue-100 mb-4">Generate Monthly Payslips</h2>
             <div className="space-y-4">
               <div className="space-y-2">
@@ -171,17 +219,22 @@ export default function PayslipsPage() {
         />
       </div>
 
-      <Card className="border-2 border-blue-200/60 shadow-card overflow-hidden">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+          </div>
+        ) : (
         <Table>
           <TableHeader>
-            <TableRow className="bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-900/50 dark:to-blue-800/50 border-b-2 border-blue-200 dark:border-blue-800">
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Payslip Number</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Employee</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Pay Period</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Issue Date</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Net Pay</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Status</TableHead>
-              <TableHead className="text-right font-bold text-blue-900 dark:text-blue-100">Actions</TableHead>
+            <TableRow className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 dark:from-blue-900 dark:via-blue-800 dark:to-blue-900 border-b-0">
+              <TableHead className="font-bold text-white">Payslip Number</TableHead>
+              <TableHead className="font-bold text-white">Employee</TableHead>
+              <TableHead className="font-bold text-white">Pay Period</TableHead>
+              <TableHead className="font-bold text-white">Issue Date</TableHead>
+              <TableHead className="font-bold text-white">Net Pay</TableHead>
+              <TableHead className="font-bold text-white">Status</TableHead>
+              <TableHead className="text-right font-bold text-white">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -251,6 +304,7 @@ export default function PayslipsPage() {
             )}
           </TableBody>
         </Table>
+        )}
       </Card>
     </div>
   )

@@ -32,7 +32,7 @@ export function StatsGrid({ stats, columns = 4, className }: StatsGridProps) {
   }
 
   const colorClasses = {
-    blue: "border-blue-200/60 dark:border-blue-800/60 bg-gradient-to-br from-blue-50 to-white dark:from-blue-900/20 dark:to-blue-900/30",
+    blue: "border-blue-400 dark:border-blue-800/60 bg-gradient-to-br from-blue-50 to-white dark:from-blue-900/20 dark:to-blue-900/30",
     green: "border-green-200/60 dark:border-green-800/60 bg-gradient-to-br from-green-50 to-white dark:from-green-900/20 dark:to-blue-900/30",
     orange: "border-orange-200/60 dark:border-orange-800/60 bg-gradient-to-br from-orange-50 to-white dark:from-orange-900/20 dark:to-blue-900/30",
     red: "border-red-200/60 dark:border-red-800/60 bg-gradient-to-br from-red-50 to-white dark:from-red-900/20 dark:to-blue-900/30",

@@ -15,25 +15,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { employeeService } from "@/lib/data"
 import { Employee } from "@/types"
 
 const employeeSchema = z.object({
-  employeeNumber: z.string().min(1, "Employee number is required"),
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
-  email: z.string().email("Invalid email address"),
-  phone: z.string().min(1, "Phone is required"),
-  address: z.string().min(1, "Address is required"),
-  city: z.string().min(1, "City is required"),
-  state: z.string().min(1, "State is required"),
-  zipCode: z.string().min(1, "Zip code is required"),
-  country: z.string().min(1, "Country is required"),
-  position: z.string().min(1, "Position is required"),
-  department: z.string().min(1, "Department is required"),
-  hireDate: z.string().min(1, "Hire date is required"),
-  salary: z.number().min(0),
-  status: z.enum(["active", "inactive", "terminated"]),
+  employeeNumber: z.string().optional(),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  email: z.string().email("Invalid email address").optional().or(z.literal("")),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
+  country: z.string().optional(),
+  position: z.string().optional(),
+  department: z.string().optional(),
+  hireDate: z.string().optional(),
+  salary: z.number().min(0).optional(),
+  status: z.enum(["active", "inactive", "terminated"]).optional(),
   // Identity and residence fields (optional)
   idNumber: z.string().optional(),
   passportNumber: z.string().optional(),
@@ -48,6 +47,8 @@ export default function EditEmployeePage() {
   const params = useParams()
   const router = useRouter()
   const [employee, setEmployee] = useState<Employee | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
 
   const {
     register,
@@ -62,27 +63,51 @@ export default function EditEmployeePage() {
 
   useEffect(() => {
     const id = params.id as string
-    const e = employeeService.getById(id)
-    if (e) {
-      setEmployee(e)
-      reset({
-        ...e,
-        hireDate: e.hireDate.split("T")[0],
+    if (!id) return
+    let cancelled = false
+    setLoading(true)
+    fetch(`/api/employees/${id}`)
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to load employee')
+        return res.json()
       })
-    }
+      .then((e) => {
+        if (!cancelled && e) {
+          setEmployee(e)
+          reset({
+            ...e,
+            hireDate: typeof e.hireDate === 'string' && e.hireDate.includes('T') ? e.hireDate.split('T')[0] : e.hireDate,
+          })
+        }
+      })
+      .catch(() => { if (!cancelled) setEmployee(null) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [params.id, reset])
 
-  const onSubmit = (data: EmployeeFormData) => {
-    if (employee) {
-      employeeService.update(employee.id, data)
+  const onSubmit = async (data: EmployeeFormData) => {
+    if (!employee) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/employees/${employee.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error('Failed to update employee')
       router.push(`/employees/${employee.id}`)
+    } catch (e) {
+      console.error(e)
+      alert('Failed to update employee.')
+    } finally {
+      setSaving(false)
     }
   }
 
-  if (!employee) {
+  if (loading || !employee) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Loading...</p>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
       </div>
     )
   }
@@ -97,7 +122,7 @@ export default function EditEmployeePage() {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="employeeNumber">Employee Number *</Label>
+            <Label htmlFor="employeeNumber">Employee Number</Label>
             <Input id="employeeNumber" {...register("employeeNumber")} />
             {errors.employeeNumber && (
               <p className="text-sm text-destructive">{errors.employeeNumber.message}</p>
@@ -105,7 +130,7 @@ export default function EditEmployeePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="status">Status *</Label>
+            <Label htmlFor="status">Status</Label>
             <Select
               value={watch("status")}
               onValueChange={(value) => setValue("status", value as any)}
@@ -122,7 +147,7 @@ export default function EditEmployeePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="firstName">First Name *</Label>
+            <Label htmlFor="firstName">First Name</Label>
             <Input id="firstName" {...register("firstName")} />
             {errors.firstName && (
               <p className="text-sm text-destructive">{errors.firstName.message}</p>
@@ -130,7 +155,7 @@ export default function EditEmployeePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="lastName">Last Name *</Label>
+            <Label htmlFor="lastName">Last Name</Label>
             <Input id="lastName" {...register("lastName")} />
             {errors.lastName && (
               <p className="text-sm text-destructive">{errors.lastName.message}</p>
@@ -138,7 +163,7 @@ export default function EditEmployeePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="email">Email *</Label>
+            <Label htmlFor="email">Email</Label>
             <Input id="email" type="email" {...register("email")} />
             {errors.email && (
               <p className="text-sm text-destructive">{errors.email.message}</p>
@@ -146,7 +171,7 @@ export default function EditEmployeePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="phone">Phone *</Label>
+            <Label htmlFor="phone">Phone</Label>
             <Input id="phone" {...register("phone")} />
             {errors.phone && (
               <p className="text-sm text-destructive">{errors.phone.message}</p>
@@ -154,7 +179,7 @@ export default function EditEmployeePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="position">Position *</Label>
+            <Label htmlFor="position">Position</Label>
             <Input id="position" {...register("position")} />
             {errors.position && (
               <p className="text-sm text-destructive">{errors.position.message}</p>
@@ -162,7 +187,7 @@ export default function EditEmployeePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="department">Department *</Label>
+            <Label htmlFor="department">Department</Label>
             <Input id="department" {...register("department")} />
             {errors.department && (
               <p className="text-sm text-destructive">{errors.department.message}</p>
@@ -170,7 +195,7 @@ export default function EditEmployeePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="hireDate">Hire Date *</Label>
+            <Label htmlFor="hireDate">Hire Date</Label>
             <Input id="hireDate" type="date" {...register("hireDate")} />
             {errors.hireDate && (
               <p className="text-sm text-destructive">{errors.hireDate.message}</p>
@@ -178,7 +203,7 @@ export default function EditEmployeePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="salary">Salary *</Label>
+            <Label htmlFor="salary">Salary</Label>
             <Input
               id="salary"
               type="number"
@@ -191,7 +216,7 @@ export default function EditEmployeePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="address">Address *</Label>
+            <Label htmlFor="address">Address</Label>
             <Input id="address" {...register("address")} />
             {errors.address && (
               <p className="text-sm text-destructive">{errors.address.message}</p>
@@ -199,7 +224,7 @@ export default function EditEmployeePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="city">City *</Label>
+            <Label htmlFor="city">City</Label>
             <Input id="city" {...register("city")} />
             {errors.city && (
               <p className="text-sm text-destructive">{errors.city.message}</p>
@@ -207,7 +232,7 @@ export default function EditEmployeePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="state">State *</Label>
+            <Label htmlFor="state">State</Label>
             <Input id="state" {...register("state")} />
             {errors.state && (
               <p className="text-sm text-destructive">{errors.state.message}</p>
@@ -215,7 +240,7 @@ export default function EditEmployeePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="zipCode">Zip Code *</Label>
+            <Label htmlFor="zipCode">Zip Code</Label>
             <Input id="zipCode" {...register("zipCode")} />
             {errors.zipCode && (
               <p className="text-sm text-destructive">{errors.zipCode.message}</p>
@@ -223,7 +248,7 @@ export default function EditEmployeePage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="country">Country *</Label>
+            <Label htmlFor="country">Country</Label>
             <Input id="country" {...register("country")} />
             {errors.country && (
               <p className="text-sm text-destructive">{errors.country.message}</p>
@@ -231,7 +256,7 @@ export default function EditEmployeePage() {
           </div>
         </div>
 
-        <div className="border-2 border-blue-200/60 p-6 rounded-lg">
+        <div className="border-2 border-blue-400 dark:border-blue-800/60 p-6 rounded-lg">
           <h2 className="text-xl font-semibold text-blue-900 mb-4 flex items-center gap-2">
             <span className="w-1 h-6 bg-gold rounded"></span>
             Identity & Residence Information
@@ -291,9 +316,10 @@ export default function EditEmployeePage() {
           <Button 
             type="submit"
             variant="gold"
+            disabled={saving}
             className="bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-blue-900 hover:from-yellow-500 hover:via-yellow-600 hover:to-yellow-700 shadow-gold hover:shadow-xl font-bold border-2 border-yellow-300/50 px-8 py-3"
           >
-            Update Employee
+            {saving ? 'Saving...' : 'Update Employee'}
           </Button>
         </div>
       </form>

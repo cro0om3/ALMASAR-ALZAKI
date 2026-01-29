@@ -1,0 +1,174 @@
+{
+  "projectName": "uncle-website-system",
+  "deploymentStrategy": "DigitalOcean + Namecheap via Cursor MCP",
+  "version": "1.0.0",
+  "steps": {
+    "1_setup_local": {
+      "title": "إعداد محلي كامل",
+      "description": "إعداد المشروع محلياً مع قاعدة البيانات",
+      "commands": [
+        "npm install",
+        "npx prisma generate",
+        "npx prisma db push",
+        "node create-admin-user.js",
+        "npm run build",
+        "npm run start"
+      ],
+      "checklist": [
+        "Node.js 18+ مثبت",
+        "PostgreSQL محلي (اختياري)",
+        ".env.local محدث",
+        "المشروع يعمل محلياً"
+      ]
+    },
+    "2_setup_mcp_servers": {
+      "title": "إعداد MCP Servers في Cursor",
+      "description": "إعداد DigitalOcean و Namecheap MCP Servers",
+      "commands": [
+        "npm run setup:mcp"
+      ],
+      "requirements": {
+        "digitalocean": {
+          "url": "https://cloud.digitalocean.com/account/api/tokens",
+          "steps": [
+            "Generate New Token",
+            "Read + Write permissions",
+            "Copy Token"
+          ]
+        },
+        "namecheap": {
+          "url": "https://www.namecheap.com/myaccount/api/",
+          "steps": [
+            "Enable API Access",
+            "Add Your IP Address",
+            "Copy API User و API Key"
+          ],
+          "requirements": [
+            "20+ domains أو $50 spent",
+            "API Access enabled",
+            "IP whitelisted"
+          ]
+        }
+      },
+      "checklist": [
+        "DigitalOcean API Token",
+        "Namecheap API Credentials",
+        "MCP Servers مثبتة في Cursor",
+        "Cursor أعيد تشغيله"
+      ]
+    },
+    "3_create_database": {
+      "title": "إنشاء قاعدة البيانات",
+      "description": "إنشاء PostgreSQL database على DigitalOcean",
+      "composerCommand": "أنشئ PostgreSQL database على DigitalOcean باسم {project_name} مع 1GB storage",
+      "checklist": [
+        "Database منشأة",
+        "Connection String محفوظ",
+        "Database متصل"
+      ]
+    },
+    "4_create_server": {
+      "title": "إنشاء Droplet/VPS",
+      "description": "إنشاء Droplet على DigitalOcean",
+      "composerCommand": "أنشئ Droplet على DigitalOcean مع Ubuntu 22.04 و 2GB RAM و Node.js 18",
+      "checklist": [
+        "Droplet منشأ",
+        "IP Address محفوظ",
+        "SSH access جاهز"
+      ]
+    },
+    "5_purchase_domain": {
+      "title": "شراء Domain",
+      "description": "شراء Domain من Namecheap",
+      "composerCommand": "اشتري domain {domain_name} من Namecheap",
+      "checklist": [
+        "Domain مشترى",
+        "Domain جاهز للاستخدام"
+      ]
+    },
+    "6_link_domain": {
+      "title": "ربط Domain مع السيرفر",
+      "description": "ربط Domain مع IP السيرفر",
+      "composerCommand": "اربط domain {domain_name} مع IP {server_ip}",
+      "dnsRecords": {
+        "A": {
+          "@": "{server_ip}",
+          "www": "{server_ip}"
+        }
+      },
+      "checklist": [
+        "DNS Records محدثة",
+        "DNS propagation (1-2 ساعة)",
+        "Domain مربوط"
+      ]
+    },
+    "7_deploy_project": {
+      "title": "رفع المشروع",
+      "description": "رفع المشروع على DigitalOcean App Platform",
+      "composerCommand": "ارفع المشروع الحالي على DigitalOcean App Platform واربطه مع Database و Domain",
+      "manualSteps": [
+        "رفع المشروع عبر FTP/SFTP (بدون node_modules, .next)",
+        "npm install --production",
+        "npx prisma generate",
+        "npx prisma db push",
+        "node create-admin-user.js",
+        "npm run build"
+      ],
+      "checklist": [
+        "المشروع مرفوع",
+        "Environment Variables محدثة",
+        "Database migrations تمت",
+        "المشروع يعمل"
+      ]
+    },
+    "8_setup_ssl": {
+      "title": "إعداد SSL (HTTPS)",
+      "description": "تفعيل HTTPS مجاني",
+      "method": "Let's Encrypt via Win-ACME أو DigitalOcean",
+      "checklist": [
+        "SSL Certificate مثبت",
+        "HTTPS يعمل",
+        "HTTP redirects to HTTPS"
+      ]
+    }
+  },
+  "environmentVariables": {
+    "local": {
+      "DATABASE_URL": "postgresql://user:password@localhost:5432/dbname",
+      "NODE_ENV": "development",
+      "NEXT_OUTPUT_MODE": "standalone"
+    },
+    "production": {
+      "DATABASE_URL": "postgresql://user:password@host:5432/dbname?sslmode=require",
+      "NODE_ENV": "production",
+      "NEXT_OUTPUT_MODE": "standalone",
+      "NEXT_PUBLIC_APP_URL": "https://yourdomain.com"
+    }
+  },
+  "composerCommands": {
+    "create_database": "أنشئ PostgreSQL database على DigitalOcean باسم {project_name} مع 1GB storage",
+    "create_droplet": "أنشئ Droplet على DigitalOcean مع Ubuntu 22.04 و 2GB RAM و Node.js 18",
+    "purchase_domain": "اشتري domain {domain_name} من Namecheap",
+    "link_domain": "اربط domain {domain_name} مع IP {server_ip}",
+    "deploy_project": "ارفع المشروع الحالي على DigitalOcean App Platform واربطه مع Database و Domain",
+    "full_deployment": "أنشئ PostgreSQL database، أنشئ Droplet، اشتري domain {domain_name}، اربط Domain، وارفع المشروع على DigitalOcean"
+  },
+  "costs": {
+    "digitalocean": {
+      "droplet_2gb": "$12/month",
+      "database_1gb": "$15/month",
+      "total": "$27/month"
+    },
+    "namecheap": {
+      "domain": "$10-15/year"
+    },
+    "total_monthly": "$27-30/month"
+  },
+  "notes": {
+    "no_github": "لا حاجة لـ GitHub - رفع مباشر",
+    "cursor_only": "كل شيء من Cursor Composer",
+    "mcp_servers": "MCP Servers تتعامل مع كل شيء تلقائياً",
+    "backup": "إعداد Backup تلقائي لقاعدة البيانات",
+    "monitoring": "استخدام PM2 أو DigitalOcean monitoring"
+  }
+}

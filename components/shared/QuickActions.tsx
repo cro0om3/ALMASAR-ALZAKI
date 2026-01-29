@@ -97,7 +97,7 @@ export function QuickActions() {
         className="w-full max-w-2xl border-2 border-blue-300 dark:border-blue-700 shadow-2xl bg-white dark:bg-blue-950"
         onClick={(e) => e.stopPropagation()}
       >
-        <CardHeader className="border-b border-blue-200 dark:border-blue-800">
+        <CardHeader className="border-b border-blue-400 dark:border-blue-800">
           <div className="flex items-center justify-between">
             <CardTitle className="text-xl font-bold text-blue-900 dark:text-blue-100">
               Quick Actions

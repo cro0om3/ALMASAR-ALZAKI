@@ -16,21 +16,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { payslipService, employeeService } from "@/lib/data"
 import { Payslip } from "@/types"
 import { formatCurrency } from "@/lib/utils"
 
 const payslipSchema = z.object({
-  employeeId: z.string().min(1, "Employee is required"),
-  payPeriodStart: z.string().min(1, "Pay period start is required"),
-  payPeriodEnd: z.string().min(1, "Pay period end is required"),
-  issueDate: z.string().min(1, "Issue date is required"),
-  baseSalary: z.number().min(0),
-  overtime: z.number().min(0),
-  bonuses: z.number().min(0),
-  deductions: z.number().min(0),
-  tax: z.number().min(0),
-  status: z.enum(["draft", "issued", "paid"]),
+  employeeId: z.string().optional(),
+  payPeriodStart: z.string().optional(),
+  payPeriodEnd: z.string().optional(),
+  issueDate: z.string().optional(),
+  baseSalary: z.number().min(0).optional(),
+  overtime: z.number().min(0).optional(),
+  bonuses: z.number().min(0).optional(),
+  deductions: z.number().min(0).optional(),
+  tax: z.number().min(0).optional(),
+  status: z.enum(["draft", "issued", "paid"]).optional(),
   notes: z.string().optional(),
 })
 
@@ -42,6 +41,8 @@ export default function EditPayslipPage() {
   const [payslip, setPayslip] = useState<Payslip | null>(null)
   const [employees, setEmployees] = useState<any[]>([])
   const [netPay, setNetPay] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
 
   const {
     register,
@@ -55,26 +56,46 @@ export default function EditPayslipPage() {
   })
 
   useEffect(() => {
-    setEmployees(employeeService.getAll())
-    
     const id = params.id as string
-    const p = payslipService.getById(id)
-    if (p) {
-      setPayslip(p)
-      reset({
-        employeeId: p.employeeId,
-        payPeriodStart: p.payPeriodStart.split("T")[0],
-        payPeriodEnd: p.payPeriodEnd.split("T")[0],
-        issueDate: p.issueDate.split("T")[0],
-        baseSalary: p.baseSalary,
-        overtime: p.overtime,
-        bonuses: p.bonuses,
-        deductions: p.deductions,
-        tax: p.tax,
-        status: p.status,
-        notes: p.notes,
-      })
+    if (!id) {
+      setLoading(false)
+      return
     }
+    let cancelled = false
+    setLoading(true)
+    const load = async () => {
+      try {
+        const [pRes, employeesRes] = await Promise.all([
+          fetch(`/api/payslips/${id}`),
+          fetch('/api/employees'),
+        ])
+        if (cancelled) return
+        const p = pRes.ok ? await pRes.json() : null
+        const employeesList = employeesRes.ok ? await employeesRes.json() : []
+        setEmployees(employeesList || [])
+        if (p) {
+          setPayslip(p)
+          const dateStr = (d: string) => (d && d.includes('T') ? d.split('T')[0] : d)
+          reset({
+            employeeId: p.employeeId,
+            payPeriodStart: dateStr(p.payPeriodStart),
+            payPeriodEnd: dateStr(p.payPeriodEnd),
+            issueDate: dateStr(p.issueDate),
+            baseSalary: p.baseSalary,
+            overtime: p.overtime,
+            bonuses: p.bonuses,
+            deductions: p.deductions,
+            tax: p.tax,
+            status: p.status,
+            notes: p.notes,
+          })
+        } else setPayslip(null)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
   }, [params.id, reset])
 
   const watchedBaseSalary = watch("baseSalary") || 0
@@ -89,20 +110,39 @@ export default function EditPayslipPage() {
     setNetPay(net)
   }, [watchedBaseSalary, watchedOvertime, watchedBonuses, watchedDeductions, watchedTax])
 
-  const onSubmit = (data: PayslipFormData) => {
-    if (payslip) {
-      payslipService.update(payslip.id, {
-        ...data,
-        netPay,
+  const onSubmit = async (data: PayslipFormData) => {
+    if (!payslip) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/payslips/${payslip.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...data, netPay }),
       })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to update payslip')
+      }
       router.push(`/payslips/${payslip.id}`)
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.message || 'Failed to update payslip')
+    } finally {
+      setSaving(false)
     }
   }
 
-  if (!payslip) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <p className="text-muted-foreground">Loading...</p>
+      </div>
+    )
+  }
+  if (!payslip) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Payslip not found</p>
       </div>
     )
   }
@@ -117,7 +157,7 @@ export default function EditPayslipPage() {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="employeeId">Employee *</Label>
+            <Label htmlFor="employeeId">Employee</Label>
             <Select
               value={watch("employeeId")}
               onValueChange={(value) => setValue("employeeId", value)}
@@ -139,7 +179,7 @@ export default function EditPayslipPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="issueDate">Issue Date *</Label>
+            <Label htmlFor="issueDate">Issue Date</Label>
             <Input type="date" {...register("issueDate")} />
             {errors.issueDate && (
               <p className="text-sm text-destructive">{errors.issueDate.message}</p>
@@ -147,7 +187,7 @@ export default function EditPayslipPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="payPeriodStart">Pay Period Start *</Label>
+            <Label htmlFor="payPeriodStart">Pay Period Start</Label>
             <Input type="date" {...register("payPeriodStart")} />
             {errors.payPeriodStart && (
               <p className="text-sm text-destructive">{errors.payPeriodStart.message}</p>
@@ -155,7 +195,7 @@ export default function EditPayslipPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="payPeriodEnd">Pay Period End *</Label>
+            <Label htmlFor="payPeriodEnd">Pay Period End</Label>
             <Input type="date" {...register("payPeriodEnd")} />
             {errors.payPeriodEnd && (
               <p className="text-sm text-destructive">{errors.payPeriodEnd.message}</p>
@@ -163,7 +203,7 @@ export default function EditPayslipPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="baseSalary">Base Salary *</Label>
+            <Label htmlFor="baseSalary">Base Salary</Label>
             <Input
               type="number"
               step="0.01"
@@ -211,7 +251,7 @@ export default function EditPayslipPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="status">Status *</Label>
+            <Label htmlFor="status">Status</Label>
             <Select
               value={watch("status")}
               onValueChange={(value) => setValue("status", value as any)}
@@ -246,10 +286,11 @@ export default function EditPayslipPage() {
           </Button>
           <Button 
             type="submit"
+            disabled={saving}
             variant="gold"
             className="bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-blue-900 hover:from-yellow-500 hover:via-yellow-600 hover:to-yellow-700 shadow-gold hover:shadow-xl font-bold border-2 border-yellow-300/50 px-8 py-3"
           >
-            Update Payslip
+            {saving ? "Saving..." : "Update Payslip"}
           </Button>
         </div>
       </form>

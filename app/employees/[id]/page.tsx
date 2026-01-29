@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Edit, ArrowLeft, Eye } from "lucide-react"
-import { employeeService, payslipService } from "@/lib/data"
 import { Employee, Payslip } from "@/types"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import Link from "next/link"
@@ -26,19 +25,34 @@ export default function EmployeeDetailPage() {
   const { canEdit } = usePermissions()
   const [employee, setEmployee] = useState<Employee | null>(null)
   const [payslips, setPayslips] = useState<Payslip[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const id = params.id as string
-    const e = employeeService.getById(id)
-    setEmployee(e || null)
-
-    // Load payslip history
-    const employeePayslips = payslipService.getByEmployeeId(id)
-    // Sort by issue date (newest first)
-    employeePayslips.sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime())
-    setPayslips(employeePayslips)
+    if (!id) return
+    let cancelled = false
+    setLoading(true)
+    Promise.all([
+      fetch(`/api/employees/${id}`).then((r) => (r.ok ? r.json() : null)),
+      fetch('/api/payslips').then((r) => (r.ok ? r.json() : [])),
+    ]).then(([e, allPayslips]) => {
+      if (cancelled) return
+      setEmployee(e || null)
+      const employeePayslips = (allPayslips || []).filter((p: Payslip) => p.employeeId === id)
+      employeePayslips.sort((a: Payslip, b: Payslip) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime())
+      setPayslips(employeePayslips)
+    }).catch(() => { if (!cancelled) setEmployee(null); setPayslips([]) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [params.id])
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    )
+  }
   if (!employee) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -132,7 +146,7 @@ export default function EmployeeDetailPage() {
       </div>
 
       {/* Payslip History */}
-      <Card className="border-2 border-blue-200/60">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60">
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-blue-800 rounded-full"></div>
@@ -148,15 +162,15 @@ export default function EmployeeDetailPage() {
             <>
               {/* Statistics */}
               <div className="grid gap-4 md:grid-cols-3 mb-6">
-                <div className="p-4 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <div className="p-4 border border-blue-400 dark:border-blue-800 rounded-lg">
                   <p className="text-sm text-gray-600 dark:text-gray-300 font-medium mb-1">Total Payslips</p>
                   <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">{payslips.length}</p>
                 </div>
-                <div className="p-4 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <div className="p-4 border border-blue-400 dark:border-blue-800 rounded-lg">
                   <p className="text-sm text-gray-600 dark:text-gray-300 font-medium mb-1">Total Paid</p>
                   <p className="text-2xl font-bold text-green-600 dark:text-green-400">{formatCurrency(totalPayslips)}</p>
                 </div>
-                <div className="p-4 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <div className="p-4 border border-blue-400 dark:border-blue-800 rounded-lg">
                   <p className="text-sm text-gray-600 dark:text-gray-300 font-medium mb-1">Average Payslip</p>
                   <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">{formatCurrency(averagePayslip)}</p>
                 </div>
@@ -165,13 +179,13 @@ export default function EmployeeDetailPage() {
               {/* Payslips Table */}
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-900/50 dark:to-blue-800/50 border-b-2 border-blue-200 dark:border-blue-800">
-                    <TableHead className="font-bold text-blue-900 dark:text-blue-100">Payslip Number</TableHead>
-                    <TableHead className="font-bold text-blue-900 dark:text-blue-100">Pay Period</TableHead>
-                    <TableHead className="font-bold text-blue-900 dark:text-blue-100">Issue Date</TableHead>
-                    <TableHead className="font-bold text-blue-900 dark:text-blue-100">Net Pay</TableHead>
-                    <TableHead className="font-bold text-blue-900 dark:text-blue-100">Status</TableHead>
-                    <TableHead className="text-right font-bold text-blue-900 dark:text-blue-100">Actions</TableHead>
+                  <TableRow className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 dark:from-blue-900 dark:via-blue-800 dark:to-blue-900 border-b-0">
+                    <TableHead className="font-bold text-white">Payslip Number</TableHead>
+                    <TableHead className="font-bold text-white">Pay Period</TableHead>
+                    <TableHead className="font-bold text-white">Issue Date</TableHead>
+                    <TableHead className="font-bold text-white">Net Pay</TableHead>
+                    <TableHead className="font-bold text-white">Status</TableHead>
+                    <TableHead className="text-right font-bold text-white">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -203,7 +217,7 @@ export default function EmployeeDetailPage() {
               </Table>
 
               {lastPayslip && (
-                <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-400 dark:border-blue-800">
                   <p className="text-sm text-gray-600">
                     <strong>Last Payslip:</strong> {lastPayslip.payslipNumber} - {formatDate(lastPayslip.issueDate)} - {formatCurrency(lastPayslip.netPay)}
                   </p>

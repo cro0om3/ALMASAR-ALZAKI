@@ -117,7 +117,7 @@ export function DataBackup() {
   }
 
   return (
-    <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card">
+    <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card">
       <CardHeader>
         <div className="flex items-center gap-3">
           <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-lg">

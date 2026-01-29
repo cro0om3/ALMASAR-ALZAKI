@@ -40,7 +40,7 @@ export function PerformanceMetrics({ metrics, title = "Performance Metrics" }: P
   }
 
   return (
-    <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
+    <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
       <CardHeader>
         <CardTitle className="text-xl font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2">
           <Target className="h-5 w-5 text-gold dark:text-yellow-400" />
@@ -57,7 +57,7 @@ export function PerformanceMetrics({ metrics, title = "Performance Metrics" }: P
             return (
               <div
                 key={index}
-                className="p-4 bg-gradient-to-br from-blue-50 to-white dark:from-blue-900/20 dark:to-blue-900/10 rounded-lg border border-blue-200 dark:border-blue-800"
+                className="p-4 bg-gradient-to-br from-blue-50 to-white dark:from-blue-900/20 dark:to-blue-900/10 rounded-lg border border-blue-400 dark:border-blue-800"
               >
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm font-medium text-gray-600 dark:text-gray-400">

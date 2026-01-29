@@ -10,7 +10,13 @@ interface PageHeaderProps {
   actionHref?: string
   actionIcon?: ReactNode
   onActionClick?: () => void
+  secondaryActionLabel?: string
+  secondaryActionHref?: string
+  secondaryActionIcon?: ReactNode
+  onSecondaryActionClick?: () => void
 }
+
+const goldButtonClass = "bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-blue-900 hover:from-yellow-500 hover:via-yellow-600 hover:to-yellow-700 shadow-gold hover:shadow-xl font-bold border-2 border-yellow-300/50 px-6 py-3 min-w-[160px]"
 
 export function PageHeader({
   title,
@@ -19,34 +25,47 @@ export function PageHeader({
   actionHref,
   actionIcon,
   onActionClick,
+  secondaryActionLabel,
+  secondaryActionHref,
+  secondaryActionIcon,
+  onSecondaryActionClick,
 }: PageHeaderProps) {
   const actionButton = actionLabel && (
     actionHref ? (
       <Link href={actionHref}>
-        <Button 
-          variant="gold"
-          size="lg"
-          className="bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-blue-900 hover:from-yellow-500 hover:via-yellow-600 hover:to-yellow-700 shadow-gold hover:shadow-xl font-bold border-2 border-yellow-300/50 px-6 py-3 min-w-[160px]"
-        >
+        <Button variant="gold" size="lg" className={goldButtonClass}>
           {actionIcon || <Plus className="mr-2 h-5 w-5" />}
           {actionLabel}
         </Button>
       </Link>
     ) : onActionClick ? (
-      <Button 
-        onClick={onActionClick}
-        variant="gold"
-        size="lg"
-        className="bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-blue-900 hover:from-yellow-500 hover:via-yellow-600 hover:to-yellow-700 shadow-gold hover:shadow-xl font-bold border-2 border-yellow-300/50 px-6 py-3 min-w-[160px]"
-      >
+      <Button onClick={onActionClick} variant="gold" size="lg" className={goldButtonClass}>
         {actionIcon || <Plus className="mr-2 h-5 w-5" />}
         {actionLabel}
       </Button>
     ) : null
   )
 
+  const secondaryButton = secondaryActionLabel && (
+    secondaryActionHref ? (
+      <Link href={secondaryActionHref}>
+        <Button variant="gold" size="lg" className={goldButtonClass}>
+          {secondaryActionIcon || <Plus className="mr-2 h-5 w-5" />}
+          {secondaryActionLabel}
+        </Button>
+      </Link>
+    ) : onSecondaryActionClick ? (
+      <Button onClick={onSecondaryActionClick} variant="gold" size="lg" className={goldButtonClass}>
+        {secondaryActionIcon || <Plus className="mr-2 h-5 w-5" />}
+        {secondaryActionLabel}
+      </Button>
+    ) : null
+  )
+
+  const hasActions = actionButton || secondaryButton
+
   return (
-    <div className="relative overflow-hidden bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white p-8 md:p-10 rounded-2xl shadow-luxury">
+    <div className="relative overflow-hidden bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white p-8 md:p-10 rounded-2xl shadow-luxury border-b-4 border-white">
       <div className="absolute inset-0 bg-gradient-to-br from-blue-950/30 to-transparent"></div>
       <div className="absolute top-0 right-0 w-64 h-64 bg-gold/10 rounded-full blur-3xl"></div>
       <div className="absolute bottom-0 left-0 w-48 h-48 bg-gold/20 rounded-full blur-2xl"></div>
@@ -57,7 +76,12 @@ export function PageHeader({
             <p className="text-blue-100 dark:text-blue-200 text-lg font-medium">{description}</p>
           )}
         </div>
-        {actionButton}
+        {hasActions && (
+          <div className="flex flex-wrap gap-3 items-center">
+            {secondaryButton}
+            {actionButton}
+          </div>
+        )}
       </div>
     </div>
   )

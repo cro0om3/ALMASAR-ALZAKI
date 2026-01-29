@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Edit, ArrowLeft } from "lucide-react"
-import { customerService } from "@/lib/data"
 import { Customer } from "@/types"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 
@@ -14,12 +13,34 @@ export default function CustomerDetailPage() {
   const router = useRouter()
   const { canEdit } = usePermissions()
   const [customer, setCustomer] = useState<Customer | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const id = params.id as string
-    const c = customerService.getById(id)
-    setCustomer(c || null)
+    const loadCustomer = async () => {
+      try {
+        setLoading(true)
+        const id = params.id as string
+        const response = await fetch(`/api/customers/${id}`)
+        if (!response.ok) throw new Error('Failed to load customer')
+        const data = await response.json()
+        setCustomer(data)
+      } catch (error: any) {
+        console.error('Error loading customer:', error)
+        setCustomer(null)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadCustomer()
   }, [params.id])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
 
   if (!customer) {
     return (
@@ -57,7 +78,7 @@ export default function CustomerDetailPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <Card className="border-2 border-blue-200/60">
+        <Card className="border-2 border-blue-400 dark:border-blue-800/60">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3">
               <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-blue-800 rounded-full"></div>

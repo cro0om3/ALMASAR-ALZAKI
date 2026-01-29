@@ -13,42 +13,117 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Search, Eye, Edit, Trash2, Receipt } from "lucide-react"
-import { invoiceService } from "@/lib/data"
-import { customerService } from "@/lib/data"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Plus, Search, Eye, Edit, Trash2, Receipt, Download, FileSpreadsheet, FileText, File } from "lucide-react"
 import { Invoice } from "@/types"
+import type { Customer } from "@/types"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { Card } from "@/components/ui/card"
 import { usePermissions } from "@/lib/hooks/use-permissions"
+import { exportToExcel, exportToWord, exportToPDF, ExportData } from "@/lib/utils/export-utils"
+import { useToast } from "@/lib/hooks/use-toast"
 
 export default function InvoicesPage() {
-  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [invoices, setInvoices] = useState<(Invoice & { customer?: Customer | null })[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
   const { canEdit, canDelete } = usePermissions()
+  const { toast } = useToast()
+
+  const buildExportData = (inv: Invoice & { customer?: Customer | null }, customer: Customer | null): ExportData => ({
+    title: "TAX INVOICE",
+    documentNumber: inv.invoiceNumber,
+    date: inv.date,
+    customer: customer ? { name: customer.name, email: customer.email, phone: customer.phone, address: customer.address } : undefined,
+    items: (inv.items || []).map((item: any) => ({
+      description: item.description,
+      quantity: item.quantity,
+      hours: item.hours,
+      days: item.days,
+      unitPrice: item.unitPrice,
+      tax: item.tax,
+      total: item.total,
+      vehicleNumber: item.vehicleNumber,
+    })),
+    subtotal: inv.subtotal ?? 0,
+    taxRate: inv.taxRate,
+    taxAmount: inv.taxAmount,
+    total: inv.total,
+    terms: inv.terms,
+    notes: inv.notes,
+    additionalFields: {
+      "Due Date": formatDate(inv.dueDate),
+      "Status": inv.status,
+      "Project Name": inv.projectName,
+      "LPO Number": inv.lpoNumber,
+      "Scope of Work": inv.scopeOfWork,
+    },
+  })
+
+  const handleExportInvoice = async (id: string, type: 'excel' | 'word' | 'pdf') => {
+    try {
+      const invRes = await fetch(`/api/invoices/${id}`)
+      if (!invRes.ok) throw new Error('Failed to load invoice')
+      const inv = await invRes.json()
+      const cRes = await fetch(`/api/customers/${inv.customerId || ''}`)
+      const customer = cRes.ok ? await cRes.json() : null
+      const data = buildExportData({ ...inv, customer }, customer)
+      const filename = `Invoice-${inv.invoiceNumber}`
+      switch (type) {
+        case 'excel': exportToExcel(data, filename); break
+        case 'word': exportToWord(data, filename); break
+        case 'pdf': exportToPDF(data, filename); break
+      }
+      toast({ title: "Export Successful", description: `Invoice exported to ${type.toUpperCase()} successfully` })
+    } catch {
+      toast({ title: "Export Failed", description: "Failed to export invoice.", variant: "destructive" })
+    }
+  }
+
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      const [invRes, cRes] = await Promise.all([
+        fetch('/api/invoices'),
+        fetch('/api/customers'),
+      ])
+      if (!invRes.ok || !cRes.ok) throw new Error('Failed to load')
+      const [allInvoices, allCustomers] = await Promise.all([invRes.json(), cRes.json()])
+      const customerMap = new Map((allCustomers || []).map((c: Customer) => [c.id, c]))
+      setInvoices((allInvoices || []).map((i: Invoice) => ({
+        ...i,
+        customer: customerMap.get(i.customerId) ?? null,
+      })))
+    } catch (e) {
+      console.error(e)
+      setInvoices([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const loadInvoices = () => {
-      const allInvoices = invoiceService.getAll()
-      const invoicesWithCustomers = allInvoices.map(i => ({
-        ...i,
-        customer: customerService.getById(i.customerId),
-      }))
-      setInvoices(invoicesWithCustomers)
-    }
-    loadInvoices()
+    loadData()
   }, [])
 
-  const handleDelete = (id: string) => {
-    if (confirm("Are you sure you want to delete this invoice?")) {
-      invoiceService.delete(id)
-      setInvoices(invoiceService.getAll().map(i => ({
-        ...i,
-        customer: customerService.getById(i.customerId),
-      })))
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this invoice?")) return
+    try {
+      const res = await fetch(`/api/invoices/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete')
+      await loadData()
+    } catch (e) {
+      console.error(e)
+      alert('Failed to delete invoice.')
     }
   }
 
@@ -98,7 +173,7 @@ export default function InvoicesPage() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="h-12 rounded-lg border-2 border-blue-200/60 dark:border-blue-800/60 bg-white dark:bg-blue-900 px-4 py-2 text-sm font-semibold text-blue-900 dark:text-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 dark:focus:border-blue-400 transition-all"
+          className="h-12 rounded-lg border-2 border-blue-400 dark:border-blue-800/60 bg-white dark:bg-blue-900 px-4 py-2 text-sm font-semibold text-blue-900 dark:text-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 dark:focus:border-blue-400 transition-all"
         >
           <option value="all">All Status</option>
           <option value="draft">Draft</option>
@@ -109,17 +184,17 @@ export default function InvoicesPage() {
         </select>
       </div>
 
-      <Card className="border-2 border-blue-200/60 shadow-card overflow-hidden">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-900/50 dark:to-blue-800/50 border-b-2 border-blue-200 dark:border-blue-800">
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Invoice Number</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Customer</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Date</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Due Date</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Total</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Status</TableHead>
-              <TableHead className="text-right font-bold text-blue-900 dark:text-blue-100">Actions</TableHead>
+            <TableRow className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 dark:from-blue-900 dark:via-blue-800 dark:to-blue-900 border-b-0">
+              <TableHead className="font-bold text-white">Invoice Number</TableHead>
+              <TableHead className="font-bold text-white">Customer</TableHead>
+              <TableHead className="font-bold text-white">Date</TableHead>
+              <TableHead className="font-bold text-white">Due Date</TableHead>
+              <TableHead className="font-bold text-white">Total</TableHead>
+              <TableHead className="font-bold text-white">Status</TableHead>
+              <TableHead className="text-right font-bold text-white">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -157,6 +232,7 @@ export default function InvoicesPage() {
                         size="icon"
                         onClick={() => router.push(`/invoices/${invoice.id}`)}
                         className="hover:bg-blue-100 hover:text-blue-700"
+                        title="View"
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
@@ -166,16 +242,39 @@ export default function InvoicesPage() {
                           size="icon"
                           onClick={() => router.push(`/invoices/${invoice.id}/edit`)}
                           className="hover:bg-blue-100 hover:text-blue-700"
+                          title="Edit"
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
                       )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" title="Export">
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleExportInvoice(invoice.id, 'excel')}>
+                            <FileSpreadsheet className="mr-2 h-4 w-4" />
+                            Excel
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleExportInvoice(invoice.id, 'word')}>
+                            <FileText className="mr-2 h-4 w-4" />
+                            Word
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleExportInvoice(invoice.id, 'pdf')}>
+                            <File className="mr-2 h-4 w-4" />
+                            PDF
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                       {canDelete('invoices') && (
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={() => handleDelete(invoice.id)}
                           className="hover:bg-red-100 hover:text-red-600"
+                          title="Delete"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

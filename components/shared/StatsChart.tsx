@@ -29,7 +29,7 @@ export function StatsChart({
     blue: {
       bg: 'bg-blue-500',
       text: 'text-blue-700 dark:text-blue-300',
-      border: 'border-blue-200 dark:border-blue-800',
+      border: 'border-blue-400 dark:border-blue-800',
       gradient: 'from-blue-500 to-blue-600',
       lightBg: 'bg-blue-50 dark:bg-blue-900/20',
     },

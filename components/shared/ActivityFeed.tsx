@@ -1,12 +1,11 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { FileText, Receipt, ShoppingCart, Users, Clock, ArrowRight } from "lucide-react"
 import { formatDate, formatCurrency } from "@/lib/utils"
 import Link from "next/link"
-import { quotationService, invoiceService, purchaseOrderService } from "@/lib/data"
-
 interface ActivityItem {
   id: string
   type: 'quotation' | 'invoice' | 'purchase_order'
@@ -19,58 +18,68 @@ interface ActivityItem {
 }
 
 export function ActivityFeed() {
-  const activities: ActivityItem[] = []
+  const [recentActivities, setRecentActivities] = useState<ActivityItem[]>([])
 
-  // Get recent quotations
-  const quotations = quotationService.getAll()
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 3)
-    .map((q) => ({
-      id: q.id,
-      type: 'quotation' as const,
-      title: q.quotationNumber,
-      subtitle: `Quotation created`,
-      amount: q.total,
-      date: q.createdAt,
-      status: q.status,
-      link: `/quotations/${q.id}`,
-    }))
-
-  // Get recent invoices
-  const invoices = invoiceService.getAll()
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 3)
-    .map((inv) => ({
-      id: inv.id,
-      type: 'invoice' as const,
-      title: inv.invoiceNumber,
-      subtitle: `Invoice ${inv.status}`,
-      amount: inv.total,
-      date: inv.createdAt,
-      status: inv.status,
-      link: `/invoices/${inv.id}`,
-    }))
-
-  // Get recent purchase orders
-  const purchaseOrders = purchaseOrderService.getAll()
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 2)
-    .map((po) => ({
-      id: po.id,
-      type: 'purchase_order' as const,
-      title: po.orderNumber,
-      subtitle: `Purchase order created`,
-      amount: po.total,
-      date: po.createdAt,
-      status: po.status,
-      link: `/purchase-orders/${po.id}`,
-    }))
-
-  activities.push(...quotations, ...invoices, ...purchaseOrders)
-  
-  // Sort by date
-  activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  const recentActivities = activities.slice(0, 8)
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const [qRes, invRes, poRes] = await Promise.all([
+          fetch('/api/quotations'),
+          fetch('/api/invoices'),
+          fetch('/api/purchase-orders'),
+        ])
+        if (cancelled) return
+        const quotations = (qRes.ok ? await qRes.json() : [])
+          .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 3)
+          .map((q: any) => ({
+            id: q.id,
+            type: 'quotation' as const,
+            title: q.quotationNumber,
+            subtitle: `Quotation created`,
+            amount: q.total,
+            date: q.createdAt,
+            status: q.status,
+            link: `/quotations/${q.id}`,
+          }))
+        const invoices = (invRes.ok ? await invRes.json() : [])
+          .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 3)
+          .map((inv: any) => ({
+            id: inv.id,
+            type: 'invoice' as const,
+            title: inv.invoiceNumber,
+            subtitle: `Invoice ${inv.status}`,
+            amount: inv.total,
+            date: inv.createdAt,
+            status: inv.status,
+            link: `/invoices/${inv.id}`,
+          }))
+        const purchaseOrders = (poRes.ok ? await poRes.json() : [])
+          .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 2)
+          .map((po: any) => ({
+            id: po.id,
+            type: 'purchase_order' as const,
+            title: po.orderNumber,
+            subtitle: `Purchase order created`,
+            amount: po.total,
+            date: po.createdAt,
+            status: po.status,
+            link: `/purchase-orders/${po.id}`,
+          }))
+        const activities = [...quotations, ...invoices, ...purchaseOrders]
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          .slice(0, 8)
+        if (!cancelled) setRecentActivities(activities)
+      } catch (_e) {
+        if (!cancelled) setRecentActivities([])
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -117,7 +126,7 @@ export function ActivityFeed() {
 
   if (recentActivities.length === 0) {
     return (
-      <Card className="border-2 border-blue-200/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
         <CardHeader className="pb-4">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-blue-800 rounded-full"></div>
@@ -134,7 +143,7 @@ export function ActivityFeed() {
   }
 
   return (
-    <Card className="border-2 border-blue-200/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
+    <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 mb-2">

@@ -39,23 +39,23 @@ import { aiService } from "@/lib/services/ai-service"
 
 const settingsSchema = z.object({
   // Number Prefixes
-  quotationPrefix: z.string().min(1, "Quotation prefix is required"),
-  invoicePrefix: z.string().min(1, "Invoice prefix is required"),
-  receiptPrefix: z.string().min(1, "Receipt prefix is required"),
+  quotationPrefix: z.string().optional(),
+  invoicePrefix: z.string().optional(),
+  receiptPrefix: z.string().optional(),
   
   // Company Information
-  companyName: z.string().min(1, "Company name is required"),
-  tradeLicense: z.string().min(1, "Trade license is required"),
-  taxRegNumber: z.string().min(1, "Tax registration number is required"),
-  phone: z.string().min(1, "Phone is required"),
-  poBox: z.string(),
-  email: z.string().email("Invalid email address"),
-  address: z.string().min(1, "Address is required"),
+  companyName: z.string().optional(),
+  tradeLicense: z.string().optional(),
+  taxRegNumber: z.string().optional(),
+  phone: z.string().optional(),
+  poBox: z.string().optional(),
+  email: z.string().email("Invalid email address").optional().or(z.literal("")),
+  address: z.string().optional(),
   
   // Invoice/Quotation Settings
-  defaultVATRate: z.number().min(0).max(100),
-  currency: z.string().min(1, "Currency is required"),
-  currencySymbol: z.string().min(1, "Currency symbol is required"),
+  defaultVATRate: z.number().min(0).max(100).optional(),
+  currency: z.string().optional(),
+  currencySymbol: z.string().optional(),
   
   // Terms
   invoiceTerms: z.string().optional(),
@@ -86,6 +86,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false)
   const [selectedRole, setSelectedRole] = useState<UserRole>(currentRole)
   const [activeTab, setActiveTab] = useState("company")
   const [rolePermissions, setRolePermissions] = useState<Record<UserRole, Permission[]>>({
@@ -106,8 +107,31 @@ export default function SettingsPage() {
   })
 
   useEffect(() => {
-    const currentSettings = settingsService.get()
+    let currentSettings = settingsService.get()
     setSettings(currentSettings)
+
+    const loadSettings = async () => {
+      try {
+        const res = await fetch('/api/settings')
+        if (res.ok) {
+          const data = await res.json()
+          const apiSettings = data.settings
+          if (apiSettings && typeof apiSettings === 'object' && Object.keys(apiSettings).length > 0) {
+            currentSettings = { ...currentSettings, ...apiSettings } as AppSettings
+            setSettings(currentSettings)
+            settingsService.update(currentSettings)
+            if (currentSettings.logoUrl) setLogoPreview(currentSettings.logoUrl)
+          } else if (currentSettings.logoUrl) {
+            setLogoPreview(currentSettings.logoUrl)
+          }
+        } else if (currentSettings.logoUrl) {
+          setLogoPreview(currentSettings.logoUrl)
+        }
+      } catch {
+        if (currentSettings.logoUrl) setLogoPreview(currentSettings.logoUrl)
+      }
+    }
+    loadSettings()
 
     // Load permission config
     const config = permissionService.getConfig()
@@ -154,24 +178,63 @@ export default function SettingsPage() {
     }
   }, [setValue])
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        const base64String = reader.result as string
-        setLogoPreview(base64String)
-        // Update settings immediately for preview
-        settingsService.update({ logoUrl: base64String })
+    if (!file) return
+    // Show new image immediately so user sees the change
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setLogoPreview(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+
+    setIsUploadingLogo(true)
+    try {
+      const formData = new FormData()
+      formData.append('logo', file)
+      const res = await fetch('/api/settings/logo', {
+        method: 'POST',
+        body: formData,
+      })
+      let data: { logoUrl?: string; error?: string; savedToDatabase?: boolean }
+      try {
+        const text = await res.text()
+        data = text ? JSON.parse(text) : {}
+      } catch {
+        throw new Error('Server returned an invalid response. Try again.')
       }
-      reader.readAsDataURL(file)
+      if (!res.ok) throw new Error(data.error || 'Upload failed')
+      const logoUrl = data.logoUrl as string
+      if (!logoUrl) throw new Error('No logo URL returned.')
+      const savedToDb = data.savedToDatabase !== false
+      // Use cache-bust so the remote image refreshes (same path = browser cache)
+      const previewUrl = logoUrl + (logoUrl.includes('?') ? '&' : '?') + 't=' + Date.now()
+      setLogoPreview(previewUrl)
+      settingsService.update({ logoUrl })
+      setSettings((prev) => (prev ? { ...prev, logoUrl } : null))
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('settings-updated'))
+      toast({
+        title: 'Logo saved',
+        description: savedToDb ? 'Logo has been saved to the database.' : 'Logo uploaded; run app_settings table SQL in Supabase for cross-device sync.',
+        variant: 'success',
+      })
+    } catch (err) {
+      console.error('Logo upload error:', err)
+      toast({
+        title: 'Upload failed',
+        description: err instanceof Error ? err.message : 'Could not save logo. Create bucket "company-assets" in Supabase Storage.',
+        variant: 'destructive',
+      })
+      // Preview already updated from reader.onloadend above
+    } finally {
+      setIsUploadingLogo(false)
     }
   }
 
-  const onSubmit = (data: SettingsFormData) => {
+  const onSubmit = async (data: SettingsFormData) => {
     setIsSaving(true)
     try {
-      settingsService.update({
+      const payload = {
         quotationPrefix: data.quotationPrefix,
         invoicePrefix: data.invoicePrefix,
         receiptPrefix: data.receiptPrefix,
@@ -198,37 +261,47 @@ export default function SettingsPage() {
         itemsPerPage: data.itemsPerPage,
         aiEnabled: data.aiEnabled,
         openAIApiKey: data.openAIApiKey,
+      }
+      settingsService.update(payload)
+
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       })
+      let putData: { error?: string; savedToDatabase?: boolean } = {}
+      try {
+        const text = await res.text()
+        putData = text ? JSON.parse(text) : {}
+      } catch {
+        putData = { error: 'Invalid response' }
+      }
+      if (!res.ok) {
+        throw new Error(putData.error || 'Failed to save settings')
+      }
       
-      // Update AI service
       if (typeof window !== 'undefined') {
         try {
-          if (data.openAIApiKey) {
-            aiService.setApiKey(data.openAIApiKey)
-          }
-          if (data.aiEnabled !== undefined) {
-            aiService.setEnabled(data.aiEnabled)
-          }
+          if (data.openAIApiKey) aiService.setApiKey(data.openAIApiKey)
+          if (data.aiEnabled !== undefined) aiService.setEnabled(data.aiEnabled)
         } catch (error) {
           console.error('Error updating AI service:', error)
         }
       }
       
+      const savedToDb = putData.savedToDatabase !== false
       toast({
         title: "Settings Saved",
-        description: "Your settings have been saved successfully.",
+        description: savedToDb ? "Your settings have been saved successfully." : "Settings saved locally. Add app_settings table in Supabase for cross-device sync.",
         variant: "success",
       })
       
-      // Reload after a short delay
-      setTimeout(() => {
-        window.location.reload()
-      }, 1500)
+      setTimeout(() => window.location.reload(), 1500)
     } catch (error) {
       console.error("Error saving settings:", error)
       toast({
         title: "Error",
-        description: "Failed to save settings. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to save settings. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -266,7 +339,7 @@ export default function SettingsPage() {
       content: (
         <div className="space-y-6">
           {/* Logo Section */}
-          <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
+          <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
             <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4 flex items-center gap-2">
               <span className="w-1 h-6 bg-gold rounded"></span>
               Company Logo
@@ -280,7 +353,7 @@ export default function SettingsPage() {
                       alt="Company Logo"
                       width={256}
                       height={256}
-                      className="w-64 h-64 object-contain border-2 border-blue-200 dark:border-blue-800 rounded-lg p-4 bg-white dark:bg-blue-900"
+                      className="w-64 h-64 object-contain border-2 border-blue-400 dark:border-blue-800 rounded-lg p-4 bg-white dark:bg-blue-900"
                     />
                   </div>
                 ) : (
@@ -300,15 +373,31 @@ export default function SettingsPage() {
                       type="file"
                       accept="image/*"
                       onChange={handleLogoUpload}
-                      className="border-2 border-blue-200/60 dark:border-blue-800/60"
+                      disabled={isUploadingLogo}
+                      className="border-2 border-blue-400 dark:border-blue-800/60"
                     />
+                    {isUploadingLogo && (
+                      <span className="text-sm text-blue-600 dark:text-blue-400">Saving to database...</span>
+                    )}
                     {logoPreview && (
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => {
+                        disabled={isUploadingLogo}
+                        onClick={async () => {
                           setLogoPreview(null)
                           settingsService.update({ logoUrl: undefined })
+                          setSettings((prev) => (prev ? { ...prev, logoUrl: undefined } : null))
+                          if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('settings-updated'))
+                          try {
+                            await fetch('/api/settings', {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ logoUrl: null }),
+                            })
+                          } catch (e) {
+                            console.error('Failed to clear logo in DB', e)
+                          }
                         }}
                         className="border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/50"
                       >
@@ -325,18 +414,18 @@ export default function SettingsPage() {
           </Card>
 
           {/* Company Information */}
-          <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
+          <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
             <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4 flex items-center gap-2">
               <span className="w-1 h-6 bg-gold rounded"></span>
               Company Information
             </h3>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="companyName" className="text-blue-900 dark:text-blue-100 font-medium">Company Name *</Label>
+                <Label htmlFor="companyName" className="text-blue-900 dark:text-blue-100 font-medium">Company Name</Label>
                 <Input
                   id="companyName"
                   {...register("companyName")}
-                  className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60 bg-white dark:bg-blue-900"
+                  className="h-12 border-2 border-blue-400 dark:border-blue-800/60 bg-white dark:bg-blue-900"
                 />
                 {errors.companyName && (
                   <p className="text-sm text-red-600 dark:text-red-400">{errors.companyName.message}</p>
@@ -344,11 +433,11 @@ export default function SettingsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="tradeLicense" className="text-blue-900 dark:text-blue-100 font-medium">Trade License *</Label>
+                <Label htmlFor="tradeLicense" className="text-blue-900 dark:text-blue-100 font-medium">Trade License</Label>
                 <Input
                   id="tradeLicense"
                   {...register("tradeLicense")}
-                  className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60"
+                  className="h-12 border-2 border-blue-400 dark:border-blue-800/60"
                 />
                 {errors.tradeLicense && (
                   <p className="text-sm text-red-600 dark:text-red-400">{errors.tradeLicense.message}</p>
@@ -356,11 +445,11 @@ export default function SettingsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="taxRegNumber" className="text-blue-900 dark:text-blue-100 font-medium">Tax Registration Number *</Label>
+                <Label htmlFor="taxRegNumber" className="text-blue-900 dark:text-blue-100 font-medium">Tax Registration Number</Label>
                 <Input
                   id="taxRegNumber"
                   {...register("taxRegNumber")}
-                  className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60"
+                  className="h-12 border-2 border-blue-400 dark:border-blue-800/60"
                 />
                 {errors.taxRegNumber && (
                   <p className="text-sm text-red-600 dark:text-red-400">{errors.taxRegNumber.message}</p>
@@ -368,11 +457,11 @@ export default function SettingsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="phone" className="text-blue-900 dark:text-blue-100 font-medium">Phone *</Label>
+                <Label htmlFor="phone" className="text-blue-900 dark:text-blue-100 font-medium">Phone</Label>
                 <Input
                   id="phone"
                   {...register("phone")}
-                  className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60"
+                  className="h-12 border-2 border-blue-400 dark:border-blue-800/60"
                 />
                 {errors.phone && (
                   <p className="text-sm text-red-600 dark:text-red-400">{errors.phone.message}</p>
@@ -380,12 +469,12 @@ export default function SettingsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-blue-900 dark:text-blue-100 font-medium">Email *</Label>
+                <Label htmlFor="email" className="text-blue-900 dark:text-blue-100 font-medium">Email</Label>
                 <Input
                   id="email"
                   type="email"
                   {...register("email")}
-                  className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60"
+                  className="h-12 border-2 border-blue-400 dark:border-blue-800/60"
                 />
                 {errors.email && (
                   <p className="text-sm text-red-600 dark:text-red-400">{errors.email.message}</p>
@@ -397,17 +486,17 @@ export default function SettingsPage() {
                 <Input
                   id="poBox"
                   {...register("poBox")}
-                  className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60"
+                  className="h-12 border-2 border-blue-400 dark:border-blue-800/60"
                 />
               </div>
 
               <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="address" className="text-blue-900 dark:text-blue-100 font-medium">Address *</Label>
+                <Label htmlFor="address" className="text-blue-900 dark:text-blue-100 font-medium">Address</Label>
                 <Textarea
                   id="address"
                   {...register("address")}
                   rows={3}
-                  className="border-2 border-blue-200/60 dark:border-blue-800/60"
+                  className="border-2 border-blue-400 dark:border-blue-800/60"
                 />
                 {errors.address && (
                   <p className="text-sm text-red-600 dark:text-red-400">{errors.address.message}</p>
@@ -425,19 +514,19 @@ export default function SettingsPage() {
       content: (
         <div className="space-y-6">
           {/* Number Prefixes */}
-          <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
+          <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
             <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4 flex items-center gap-2">
               <span className="w-1 h-6 bg-gold rounded"></span>
               Number Prefixes
             </h3>
             <div className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
-                <Label htmlFor="quotationPrefix" className="text-blue-900 dark:text-blue-100 font-medium">Quotation Prefix *</Label>
+                <Label htmlFor="quotationPrefix" className="text-blue-900 dark:text-blue-100 font-medium">Quotation Prefix</Label>
                 <Input
                   id="quotationPrefix"
                   {...register("quotationPrefix")}
                   placeholder="QT"
-                  className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60"
+                  className="h-12 border-2 border-blue-400 dark:border-blue-800/60"
                 />
                 {errors.quotationPrefix && (
                   <p className="text-sm text-red-600 dark:text-red-400">{errors.quotationPrefix.message}</p>
@@ -446,12 +535,12 @@ export default function SettingsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="invoicePrefix" className="text-blue-900 dark:text-blue-100 font-medium">Invoice Prefix *</Label>
+                <Label htmlFor="invoicePrefix" className="text-blue-900 dark:text-blue-100 font-medium">Invoice Prefix</Label>
                 <Input
                   id="invoicePrefix"
                   {...register("invoicePrefix")}
                   placeholder="INV"
-                  className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60"
+                  className="h-12 border-2 border-blue-400 dark:border-blue-800/60"
                 />
                 {errors.invoicePrefix && (
                   <p className="text-sm text-red-600 dark:text-red-400">{errors.invoicePrefix.message}</p>
@@ -460,12 +549,12 @@ export default function SettingsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="receiptPrefix" className="text-blue-900 dark:text-blue-100 font-medium">Receipt Prefix *</Label>
+                <Label htmlFor="receiptPrefix" className="text-blue-900 dark:text-blue-100 font-medium">Receipt Prefix</Label>
                 <Input
                   id="receiptPrefix"
                   {...register("receiptPrefix")}
                   placeholder="RCP"
-                  className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60"
+                  className="h-12 border-2 border-blue-400 dark:border-blue-800/60"
                 />
                 {errors.receiptPrefix && (
                   <p className="text-sm text-red-600 dark:text-red-400">{errors.receiptPrefix.message}</p>
@@ -483,7 +572,7 @@ export default function SettingsPage() {
             </h3>
             <div className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
-                <Label htmlFor="defaultVATRate" className="text-blue-900 dark:text-blue-100 font-medium">Default VAT Rate (%) *</Label>
+                <Label htmlFor="defaultVATRate" className="text-blue-900 dark:text-blue-100 font-medium">Default VAT Rate (%)</Label>
                 <Input
                   id="defaultVATRate"
                   type="number"
@@ -497,12 +586,12 @@ export default function SettingsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="currency" className="text-blue-900 dark:text-blue-100 font-medium">Currency Code *</Label>
+                <Label htmlFor="currency" className="text-blue-900 dark:text-blue-100 font-medium">Currency Code</Label>
                 <Input
                   id="currency"
                   {...register("currency")}
                   placeholder="AED"
-                  className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60"
+                  className="h-12 border-2 border-blue-400 dark:border-blue-800/60"
                 />
                 {errors.currency && (
                   <p className="text-sm text-red-600 dark:text-red-400">{errors.currency.message}</p>
@@ -510,12 +599,12 @@ export default function SettingsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="currencySymbol" className="text-blue-900 dark:text-blue-100 font-medium">Currency Symbol *</Label>
+                <Label htmlFor="currencySymbol" className="text-blue-900 dark:text-blue-100 font-medium">Currency Symbol</Label>
                 <Input
                   id="currencySymbol"
                   {...register("currencySymbol")}
                   placeholder="AED"
-                  className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60"
+                  className="h-12 border-2 border-blue-400 dark:border-blue-800/60"
                 />
                 {errors.currencySymbol && (
                   <p className="text-sm text-red-600 dark:text-red-400">{errors.currencySymbol.message}</p>
@@ -528,7 +617,7 @@ export default function SettingsPage() {
                   id="invoiceTerms"
                   {...register("invoiceTerms")}
                   rows={3}
-                  className="border-2 border-blue-200/60 dark:border-blue-800/60"
+                  className="border-2 border-blue-400 dark:border-blue-800/60"
                   placeholder="Payment due within 30 days"
                 />
               </div>
@@ -539,7 +628,7 @@ export default function SettingsPage() {
                   id="quotationTerms"
                   {...register("quotationTerms")}
                   rows={3}
-                  className="border-2 border-blue-200/60 dark:border-blue-800/60"
+                  className="border-2 border-blue-400 dark:border-blue-800/60"
                   placeholder="Valid for 30 days"
                 />
               </div>
@@ -550,7 +639,7 @@ export default function SettingsPage() {
                   id="footerText"
                   {...register("footerText")}
                   rows={2}
-                  className="border-2 border-blue-200/60 dark:border-blue-800/60"
+                  className="border-2 border-blue-400 dark:border-blue-800/60"
                   placeholder="Additional footer text for invoices and quotations"
                 />
               </div>
@@ -566,7 +655,7 @@ export default function SettingsPage() {
       content: (
         <div className="space-y-6">
           {/* Appearance Settings */}
-          <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
+          <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
             <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4 flex items-center gap-2">
               <span className="w-1 h-6 bg-gold rounded"></span>
               Appearance
@@ -585,7 +674,7 @@ export default function SettingsPage() {
                   value={watch("dateFormat") || "DD/MM/YYYY"}
                   onValueChange={(value) => setValue("dateFormat", value)}
                 >
-                  <SelectTrigger className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60">
+                  <SelectTrigger className="h-12 border-2 border-blue-400 dark:border-blue-800/60">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -603,7 +692,7 @@ export default function SettingsPage() {
                   value={watch("timeFormat") || "24h"}
                   onValueChange={(value) => setValue("timeFormat", value as "12h" | "24h")}
                 >
-                  <SelectTrigger className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60">
+                  <SelectTrigger className="h-12 border-2 border-blue-400 dark:border-blue-800/60">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -619,7 +708,7 @@ export default function SettingsPage() {
                   value={watch("language") || "en"}
                   onValueChange={(value) => setValue("language", value)}
                 >
-                  <SelectTrigger className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60">
+                  <SelectTrigger className="h-12 border-2 border-blue-400 dark:border-blue-800/60">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -632,7 +721,7 @@ export default function SettingsPage() {
           </Card>
 
           {/* Notification Settings */}
-          <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
+          <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
             <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4 flex items-center gap-2">
               <Bell className="h-5 w-5 text-gold dark:text-yellow-400" />
               <span className="w-1 h-6 bg-gold rounded"></span>
@@ -697,7 +786,7 @@ export default function SettingsPage() {
           </Card>
 
           {/* System Preferences */}
-          <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
+          <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
             <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4 flex items-center gap-2">
               <Database className="h-5 w-5 text-gold dark:text-yellow-400" />
               <span className="w-1 h-6 bg-gold rounded"></span>
@@ -720,7 +809,7 @@ export default function SettingsPage() {
                   min={10}
                   max={100}
                   step={5}
-                  className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60 bg-white dark:bg-blue-900"
+                  className="h-12 border-2 border-blue-400 dark:border-blue-800/60 bg-white dark:bg-blue-900"
                 />
                 <p className="text-xs text-gray-500 dark:text-gray-400">Number of items to display per page in lists (10-100)</p>
               </div>
@@ -737,7 +826,7 @@ export default function SettingsPage() {
       content: (
         <div className="space-y-6">
           {/* Permissions Management */}
-          <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
+          <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
             <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4 flex items-center gap-2">
               <Shield className="h-5 w-5 text-gold dark:text-yellow-400" />
               <span className="w-1 h-6 bg-gold rounded"></span>
@@ -752,7 +841,7 @@ export default function SettingsPage() {
                   setSelectedRole(value)
                   updateRole(value)
                 }}>
-                  <SelectTrigger className="h-12 border-2 border-blue-200/60 dark:border-blue-800/60">
+                  <SelectTrigger className="h-12 border-2 border-blue-400 dark:border-blue-800/60">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -767,7 +856,7 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              <div className="p-4 bg-blue-50 dark:bg-blue-900/50 rounded-lg border border-blue-200 dark:border-blue-800">
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/50 rounded-lg border border-blue-400 dark:border-blue-800">
                 <p className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">Current Permissions:</p>
                 <div className="flex flex-wrap gap-2">
                   {permissionService.getCurrentPermissions().length === 0 ? (
@@ -791,7 +880,7 @@ export default function SettingsPage() {
                 const isReadOnly = role === 'admin' && !hasPermission('edit_settings')
 
                 return (
-                  <Card key={role} className="border border-blue-200 dark:border-blue-800 p-4">
+                  <Card key={role} className="border border-blue-400 dark:border-blue-800 p-4">
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
                         <div>
@@ -871,7 +960,7 @@ export default function SettingsPage() {
           <SystemHealth />
           
           {/* System Information */}
-          <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
+          <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card p-6">
             <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4 flex items-center gap-2">
               <Info className="h-5 w-5 text-gold dark:text-yellow-400" />
               <span className="w-1 h-6 bg-gold rounded"></span>

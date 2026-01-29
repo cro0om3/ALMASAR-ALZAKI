@@ -58,7 +58,7 @@ export function GridCard({
   variant = 'default',
 }: GridCardProps) {
   const variantClasses = {
-    default: 'border-blue-200/60 dark:border-blue-800/60 shadow-card hover:shadow-card-hover',
+    default: 'border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover',
     highlighted: 'border-gold/60 dark:border-gold/40 shadow-gold hover:shadow-lg bg-gradient-to-br from-gold/10 to-yellow-50 dark:from-gold/20 dark:to-blue-900/30',
   }
 

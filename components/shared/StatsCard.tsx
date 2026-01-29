@@ -32,7 +32,7 @@ export function StatsCard({
     blue: {
       bg: "bg-blue-100 dark:bg-blue-900",
       text: "text-blue-600 dark:text-blue-400",
-      border: "border-blue-200 dark:border-blue-800",
+      border: "border-blue-400 dark:border-blue-800",
       gradient: "from-blue-500 to-blue-600",
     },
     green: {

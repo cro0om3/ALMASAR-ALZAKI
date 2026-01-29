@@ -14,8 +14,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Edit, ArrowLeft, Download, Receipt as ReceiptIcon, Plus } from "lucide-react"
-import { invoiceService } from "@/lib/data"
-import { customerService, purchaseOrderService, receiptService, quotationService } from "@/lib/data"
 import { Invoice } from "@/types"
 import { formatCurrency, formatDate, formatDateForInvoice, numberToWords } from "@/lib/utils"
 import { COMPANY_INFO } from "@/lib/config"
@@ -33,25 +31,66 @@ export default function InvoiceDetailPage() {
   const [quotation, setQuotation] = useState<any>(null)
   const [purchaseOrder, setPurchaseOrder] = useState<any>(null)
   const [receipts, setReceipts] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const id = params.id as string
-    const inv = invoiceService.getById(id)
-    if (inv) {
-      const customer = customerService.getById(inv.customerId)
-      const q = inv.quotationId ? quotationService.getById(inv.quotationId) : null
-      const po = inv.purchaseOrderId ? purchaseOrderService.getById(inv.purchaseOrderId) : null
-      const invoiceReceipts = receiptService.getByInvoiceId(id).map(r => ({
-        ...r,
-        customer: customerService.getById(r.customerId),
-      }))
-      setQuotation(q)
-      setPurchaseOrder(po)
-      setReceipts(invoiceReceipts)
-      setInvoice({ ...inv, customer })
+    if (!id) {
+      setLoading(false)
+      return
     }
+    let cancelled = false
+    setLoading(true)
+    const load = async () => {
+      try {
+        const [invRes, customersRes, quotationsRes, posRes, receiptsRes] = await Promise.all([
+          fetch(`/api/invoices/${id}`),
+          fetch('/api/customers'),
+          fetch('/api/quotations'),
+          fetch('/api/purchase-orders'),
+          fetch('/api/receipts'),
+        ])
+        if (cancelled) return
+        const inv = invRes.ok ? await invRes.json() : null
+        const customers = customersRes.ok ? await customersRes.json() : []
+        const quotations = quotationsRes.ok ? await quotationsRes.json() : []
+        const purchaseOrders = posRes.ok ? await posRes.json() : []
+        const allReceipts = receiptsRes.ok ? await receiptsRes.json() : []
+        if (inv) {
+          const customer = (customers || []).find((c: any) => c.id === inv.customerId)
+          const q = inv.quotationId ? (quotations || []).find((q: any) => q.id === inv.quotationId) : null
+          const po = inv.purchaseOrderId ? (purchaseOrders || []).find((p: any) => p.id === inv.purchaseOrderId) : null
+          const invoiceReceipts = (allReceipts || []).filter((r: any) => r.invoiceId === id).map((r: any) => ({
+            ...r,
+            customer: (customers || []).find((c: any) => c.id === r.customerId),
+          }))
+          setQuotation(q)
+          setPurchaseOrder(po)
+          setReceipts(invoiceReceipts)
+          setInvoice({ ...inv, customer })
+        } else {
+          setInvoice(null)
+          setQuotation(null)
+          setPurchaseOrder(null)
+          setReceipts([])
+        }
+      } catch (_e) {
+        if (!cancelled) setInvoice(null)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
   }, [params.id])
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    )
+  }
   if (!invoice) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -90,10 +129,8 @@ export default function InvoiceDetailPage() {
       grossAmount = quantity * item.unitPrice
     }
     
-    const discountAmount = (grossAmount * (item.discount || 0)) / 100
-    const afterDiscount = grossAmount - discountAmount
-    const vatAmount = (afterDiscount * (invoice.taxRate || 0)) / 100
-    const netAmount = afterDiscount + vatAmount
+    const vatAmount = (grossAmount * (invoice.taxRate || 0)) / 100
+    const netAmount = grossAmount + vatAmount
     
     return { grossAmount, vatAmount, netAmount }
   }
@@ -111,7 +148,11 @@ export default function InvoiceDetailPage() {
             <title>TAX INVOICE ${invoice.invoiceNumber}</title>
             <style>
               @media print {
-                body { margin: 0; padding: 20px; }
+                body { margin: 0; padding: 10px; }
+                @page { 
+                  margin: 10mm;
+                  size: A4;
+                }
               }
               body { 
                 font-family: Arial, sans-serif; 
@@ -121,36 +162,36 @@ export default function InvoiceDetailPage() {
               }
               .header {
                 text-align: center;
-                margin-bottom: 30px;
+                margin-bottom: 15px;
                 border-bottom: 2px solid #333;
-                padding-bottom: 20px;
+                padding-bottom: 10px;
               }
               .header h1 {
-                font-size: 24px;
+                font-size: 18px;
                 font-weight: bold;
-                margin: 10px 0;
+                margin: 5px 0;
               }
               .supplier-customer {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
-                gap: 30px;
-                margin-bottom: 30px;
+                gap: 15px;
+                margin-bottom: 15px;
               }
               .section {
                 border: 1px solid #ddd;
-                padding: 15px;
+                padding: 10px;
               }
               .section h3 {
                 margin-top: 0;
-                margin-bottom: 10px;
-                font-size: 14px;
+                margin-bottom: 6px;
+                font-size: 12px;
                 font-weight: bold;
                 border-bottom: 1px solid #ddd;
-                padding-bottom: 5px;
+                padding-bottom: 3px;
               }
               .section p {
-                margin: 5px 0;
-                font-size: 12px;
+                margin: 3px 0;
+                font-size: 10px;
               }
               .invoice-info {
                 display: grid;
@@ -184,21 +225,19 @@ export default function InvoiceDetailPage() {
                 background-color: #f9f9f9;
               }
               .amount-words {
-                margin-top: 20px;
-                padding: 10px;
-                background-color: #f9f9f9;
-                border: 1px solid #ddd;
+                display: none;
               }
               .signature-section {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
-                gap: 30px;
-                margin-top: 40px;
+                gap: 15px;
+                margin-top: 20px;
               }
               .signature-box {
                 border: 1px solid #ddd;
-                padding: 20px;
-                min-height: 100px;
+                padding: 12px;
+                min-height: 70px;
+                font-size: 10px;
               }
             </style>
           </head>
@@ -260,8 +299,9 @@ export default function InvoiceDetailPage() {
               <thead>
                 <tr>
                   <th>Good & Services Supplied</th>
-                  ${invoice.billingType === 'hours' ? '<th>Vehicle#</th><th>Total hour</th>' : ''}
-                  ${invoice.billingType === 'days' ? '<th>Vehicle#</th><th>Total Days</th>' : ''}
+                  <th>Vehicle#</th>
+                  ${invoice.billingType === 'hours' ? '<th>Total hour</th>' : ''}
+                  ${invoice.billingType === 'days' ? '<th>Total Days</th>' : ''}
                   <th>Unit Price</th>
                   <th>Gross Amount AED</th>
                   <th>Vat (${invoice.taxRate}%)</th>
@@ -274,8 +314,9 @@ export default function InvoiceDetailPage() {
                   return `
                     <tr>
                       <td>${item.description}</td>
-                      ${invoice.billingType === 'hours' ? `<td>${item.vehicleNumber || '-'}</td><td>${item.hours || 0}</td>` : ''}
-                      ${invoice.billingType === 'days' ? `<td>${item.vehicleNumber || '-'}</td><td>${item.days || 0}</td>` : ''}
+                      <td>${item.vehicleNumber || '-'}</td>
+                      ${invoice.billingType === 'hours' ? `<td>${item.hours || 0}</td>` : ''}
+                      ${invoice.billingType === 'days' ? `<td>${item.days || 0}</td>` : ''}
                       <td>${formatCurrency(item.unitPrice)}</td>
                       <td>${formatCurrency(grossAmount)}</td>
                       <td>${formatCurrency(vatAmount)}</td>
@@ -284,7 +325,7 @@ export default function InvoiceDetailPage() {
                   `
                 }).join("")}
                 <tr class="total-row">
-                  <td colspan="${invoice.billingType === 'hours' || invoice.billingType === 'days' ? '3' : '1'}"><strong>Net Payment Due for this Invoice</strong></td>
+                  <td colspan="${invoice.billingType === 'hours' || invoice.billingType === 'days' ? '3' : '2'}"><strong>Net Payment Due for this Invoice</strong></td>
                   <td>${invoice.items.reduce((sum, item) => {
                     const hours = item.hours || 0
                     const days = item.days || 0
@@ -300,10 +341,6 @@ export default function InvoiceDetailPage() {
                 </tr>
               </tbody>
             </table>
-            
-            <div class="amount-words">
-              <p><strong>Amount in Words:</strong> ${amountWords}</p>
-            </div>
             
             <div class="signature-section">
               <div class="signature-box">
@@ -344,7 +381,6 @@ export default function InvoiceDetailPage() {
         hours: item.hours,
         days: item.days,
         unitPrice: item.unitPrice,
-        discount: item.discount,
         tax: item.tax,
         total: item.total,
         vehicleNumber: item.vehicleNumber,
@@ -361,7 +397,6 @@ export default function InvoiceDetailPage() {
         "Project Name": invoice.projectName,
         "LPO Number": invoice.lpoNumber,
         "Scope of Work": invoice.scopeOfWork,
-        "Amount in Words": amountWords,
       },
     }
   }
@@ -415,7 +450,7 @@ export default function InvoiceDetailPage() {
       />
 
       {/* TAX INVOICE Display - PDF Format */}
-      <Card className="border-2 border-blue-200/60 shadow-card">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card">
         <CardContent className="p-8">
           {/* Header */}
           <div className="text-center mb-8 pb-6 border-b-2 border-blue-300 dark:border-blue-700">
@@ -424,8 +459,8 @@ export default function InvoiceDetailPage() {
 
           {/* From Supplier / To Customer */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div className="border-2 border-blue-200 dark:border-blue-800 p-4 rounded-lg bg-white dark:bg-blue-900/30">
-              <h3 className="font-bold text-blue-900 dark:text-blue-100 mb-3 pb-2 border-b border-blue-200 dark:border-blue-800">From Supplier</h3>
+            <div className="border-2 border-blue-400 dark:border-blue-800 p-4 rounded-lg bg-white dark:bg-blue-900/30">
+              <h3 className="font-bold text-blue-900 dark:text-blue-100 mb-3 pb-2 border-b border-blue-400 dark:border-blue-800">From Supplier</h3>
               <div className="space-y-1 text-sm text-gray-700 dark:text-gray-300">
                 <p><strong>{COMPANY_INFO.name}</strong></p>
                 <p>Trade License: {COMPANY_INFO.tradeLicense}</p>
@@ -506,18 +541,16 @@ export default function InvoiceDetailPage() {
           <div className="overflow-x-auto mb-6">
             <Table>
               <TableHeader>
-                <TableRow className="bg-gradient-to-r from-blue-800 to-blue-900 dark:from-blue-700 dark:to-blue-800 text-white">
-                  <TableHead className="font-bold">Good & Services Supplied</TableHead>
+                <TableRow className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 dark:from-blue-900 dark:via-blue-800 dark:to-blue-900 border-b-0">
+                  <TableHead className="font-bold text-white">Good & Services Supplied</TableHead>
+                  <TableHead className="font-bold text-white">Vehicle#</TableHead>
                   {(invoice.billingType === 'hours' || invoice.billingType === 'days') && (
-                    <>
-                      <TableHead className="font-bold">Vehicle#</TableHead>
-                      <TableHead className="font-bold">{invoice.billingType === 'hours' ? 'Total hour' : 'Total Days'}</TableHead>
-                    </>
+                    <TableHead className="font-bold text-white">{invoice.billingType === 'hours' ? 'Total hour' : 'Total Days'}</TableHead>
                   )}
-                  <TableHead className="font-bold">Unit Price</TableHead>
-                  <TableHead className="font-bold">Gross Amount AED</TableHead>
-                  <TableHead className="font-bold">Vat ({invoice.taxRate}%)</TableHead>
-                  <TableHead className="font-bold">Net Amount</TableHead>
+                  <TableHead className="font-bold text-white">Unit Price</TableHead>
+                  <TableHead className="font-bold text-white">Gross Amount AED</TableHead>
+                  <TableHead className="font-bold text-white">Vat ({invoice.taxRate}%)</TableHead>
+                  <TableHead className="font-bold text-white">Net Amount</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -526,13 +559,11 @@ export default function InvoiceDetailPage() {
                   return (
                     <TableRow key={index} className="hover:bg-blue-50/30 dark:hover:bg-blue-900/30 border-b border-blue-100 dark:border-blue-800">
                       <TableCell className="font-medium text-gray-700 dark:text-gray-300">{item.description}</TableCell>
+                      <TableCell className="text-gray-600 dark:text-gray-200">{item.vehicleNumber || '-'}</TableCell>
                       {(invoice.billingType === 'hours' || invoice.billingType === 'days') && (
-                        <>
-                          <TableCell className="text-gray-600 dark:text-gray-200">{item.vehicleNumber || '-'}</TableCell>
-                          <TableCell className="text-gray-600 dark:text-gray-200">
-                            {invoice.billingType === 'hours' ? (item.hours || 0) : (item.days || 0)}
-                          </TableCell>
-                        </>
+                        <TableCell className="text-gray-600 dark:text-gray-200">
+                          {invoice.billingType === 'hours' ? (item.hours || 0) : (item.days || 0)}
+                        </TableCell>
                       )}
                       <TableCell className="text-gray-600 dark:text-gray-200">{formatCurrency(item.unitPrice)}</TableCell>
                       <TableCell className="text-gray-600 dark:text-gray-200 font-semibold">{formatCurrency(grossAmount)}</TableCell>
@@ -542,7 +573,7 @@ export default function InvoiceDetailPage() {
                   )
                 })}
                 <TableRow className="bg-blue-50 dark:bg-blue-900/50 font-bold border-t-2 border-blue-300 dark:border-blue-700">
-                  <TableCell colSpan={invoice.billingType === 'hours' || invoice.billingType === 'days' ? 3 : 1}>
+                  <TableCell colSpan={invoice.billingType === 'hours' || invoice.billingType === 'days' ? 3 : 2}>
                     Net Payment Due for this Invoice
                   </TableCell>
                   <TableCell>
@@ -570,9 +601,9 @@ export default function InvoiceDetailPage() {
 
           {/* Signatures */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
-            <div className="border-2 border-blue-200 dark:border-blue-800 p-6 rounded-lg min-h-[120px] bg-white dark:bg-blue-900/30">
+            <div className="border-2 border-blue-400 dark:border-blue-800 p-6 rounded-lg min-h-[120px] bg-white dark:bg-blue-900/30">
               <p className="font-bold text-blue-900 dark:text-blue-100 mb-4">For {COMPANY_INFO.name}</p>
-              <div className="mt-8 pt-4 border-t border-blue-200 dark:border-blue-800">
+              <div className="mt-8 pt-4 border-t border-blue-400 dark:border-blue-800">
                 <p className="text-sm text-gray-600 dark:text-gray-300">Sign & Stamp</p>
               </div>
             </div>
@@ -588,14 +619,14 @@ export default function InvoiceDetailPage() {
 
       {/* Payment Receipts Section */}
       {receipts.length > 0 && (
-        <Card className="border-2 border-blue-200/60">
+        <Card className="border-2 border-blue-400 dark:border-blue-800/60">
           <CardContent className="p-6">
             <h3 className="text-xl font-bold text-blue-900 dark:text-blue-100 mb-4">Payment Receipts</h3>
             <div className="space-y-3">
               {receipts.map((receipt) => (
                 <div
                   key={receipt.id}
-                  className="flex items-center justify-between p-4 bg-blue-50 dark:bg-blue-900/50 rounded-lg border-2 border-blue-200 dark:border-blue-800 hover:border-blue-300 dark:hover:border-blue-600 transition-colors"
+                  className="flex items-center justify-between p-4 bg-blue-50 dark:bg-blue-900/50 rounded-lg border-2 border-blue-400 dark:border-blue-800 hover:border-blue-300 dark:hover:border-blue-600 transition-colors"
                 >
                   <div className="flex items-center gap-4">
                     <ReceiptIcon className="h-5 w-5 text-gold dark:text-yellow-400" />
@@ -626,7 +657,7 @@ export default function InvoiceDetailPage() {
       {(invoice.terms || invoice.notes) && (
         <div className="grid gap-6 md:grid-cols-2">
           {invoice.terms && (
-            <Card className="border-2 border-blue-200/60">
+            <Card className="border-2 border-blue-400 dark:border-blue-800/60">
               <CardHeader className="pb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-blue-800 rounded-full"></div>
@@ -659,7 +690,7 @@ export default function InvoiceDetailPage() {
         <CardContent className="p-6">
           <h3 className="text-xl font-bold text-blue-900 mb-4">Payment Summary</h3>
           <div className="grid grid-cols-3 gap-4">
-            <div className="text-center p-4 bg-white rounded-lg border-2 border-blue-200">
+            <div className="text-center p-4 bg-white rounded-lg border-2 border-blue-400 dark:border-blue-800">
               <p className="text-sm text-gray-600 mb-1">Invoice Total</p>
               <p className="text-2xl font-bold text-blue-900">{formatCurrency(invoice.total)}</p>
             </div>

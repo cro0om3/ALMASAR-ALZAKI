@@ -24,27 +24,25 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Plus, Trash2 } from "lucide-react"
-import { vendorService, customerService, quotationService } from "@/lib/data"
 import { Vendor, Customer, Quotation, PurchaseOrderItem } from "@/types"
 import { formatCurrency } from "@/lib/utils"
 
 const purchaseOrderSchema = z.object({
-  poType: z.enum(["vendor", "customer"]),
+  poType: z.enum(["vendor", "customer"]).optional(),
   vendorId: z.string().optional(),
   customerId: z.string().optional(),
   quotationId: z.string().optional(),
-  date: z.string().min(1, "Date is required"),
-  expectedDelivery: z.string().min(1, "Expected delivery date is required"),
+  date: z.string().optional(),
+  expectedDelivery: z.string().optional(),
   items: z.array(
     z.object({
-      description: z.string().min(1, "Description is required"),
-      quantity: z.number().min(0.01, "Quantity must be greater than 0"),
-      unitPrice: z.number().min(0, "Unit price must be 0 or greater"),
-      discount: z.number().min(0).max(100),
-      tax: z.number().min(0).max(100),
+      description: z.string().optional(),
+      quantity: z.number().min(0.01, "Quantity must be greater than 0").optional(),
+      unitPrice: z.number().min(0, "Unit price must be 0 or greater").optional(),
+      tax: z.number().min(0).max(100).optional(),
     })
-  ).min(1, "At least one item is required"),
-  taxRate: z.number().min(0).max(100),
+  ).optional(),
+  taxRate: z.number().min(0).max(100).optional(),
   terms: z.string().optional(),
   notes: z.string().optional(),
 })
@@ -58,14 +56,12 @@ interface PurchaseOrderFormProps {
 }
 
 export function PurchaseOrderForm({ order, onSubmit, onCancel }: PurchaseOrderFormProps) {
-  const [poType, setPoType] = useState<"vendor" | "customer">(order?.customerId ? "customer" : "vendor")
+  const [poType, setPoType] = useState<"vendor" | "customer">(order?.vendorId ? "vendor" : "customer")
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [quotations, setQuotations] = useState<Quotation[]>([])
   const [selectedQuotation, setSelectedQuotation] = useState<Quotation | null>(null)
-  const [subtotal, setSubtotal] = useState(0)
-  const [taxAmount, setTaxAmount] = useState(0)
-  const [total, setTotal] = useState(0)
+  const FIXED_TAX_RATE = 5
 
   const {
     register,
@@ -76,18 +72,20 @@ export function PurchaseOrderForm({ order, onSubmit, onCancel }: PurchaseOrderFo
     formState: { errors },
   } = useForm<PurchaseOrderFormData>({
     resolver: zodResolver(purchaseOrderSchema),
-    defaultValues: order || {
-      poType: order?.customerId ? "customer" : "vendor",
-      vendorId: "",
-      customerId: order?.customerId || "",
-      quotationId: order?.quotationId || "",
-      date: new Date().toISOString().split("T")[0],
-      expectedDelivery: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-      items: [{ description: "", quantity: 1, unitPrice: 0, discount: 0, tax: 0 }],
-      taxRate: order?.taxRate || 0,
-      terms: "",
-      notes: "",
-    },
+    defaultValues: order
+      ? { ...order, taxRate: FIXED_TAX_RATE }
+      : {
+          poType: order?.vendorId ? "vendor" : "customer",
+          vendorId: "",
+          customerId: order?.customerId || "",
+          quotationId: order?.quotationId || "",
+          date: new Date().toISOString().split("T")[0],
+          expectedDelivery: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+          items: [{ description: "", quantity: 1, unitPrice: 0, tax: 0 }],
+          taxRate: FIXED_TAX_RATE,
+          terms: "",
+          notes: "",
+        },
   })
 
   const { fields, append, remove, replace } = useFieldArray({
@@ -96,40 +94,41 @@ export function PurchaseOrderForm({ order, onSubmit, onCancel }: PurchaseOrderFo
   })
 
   useEffect(() => {
-    setVendors(vendorService.getAll())
-    setCustomers(customerService.getAll())
-    // Show all quotations (draft, sent, accepted) - not just accepted
-    // Filter out only rejected and expired
-    setQuotations(quotationService.getAll().filter(q => 
-      q.status !== 'rejected' && q.status !== 'expired'
-    ))
-    
-    // If order has quotationId, load it and set selected quotation
-    if (order?.quotationId) {
-      const q = quotationService.getById(order.quotationId)
-      if (q) {
-        setSelectedQuotation(q)
-        // Load quotation items into form
-        const quotationItems = q.items.map(item => {
-          let quantity = item.quantity
-          if (q.billingType === 'hours' && item.hours) {
-            quantity = item.hours
-          } else if (q.billingType === 'days' && item.days) {
-            quantity = item.days
-          }
-          return {
-            description: item.description,
-            quantity: quantity,
-            unitPrice: item.unitPrice,
-            discount: item.discount || 0,
-            tax: item.tax || 0,
-          }
-        })
-        if (quotationItems.length > 0) {
-          replace(quotationItems)
+    let cancelled = false
+    const load = async () => {
+      const [vRes, cRes, qRes] = await Promise.all([
+        fetch('/api/vendors'),
+        fetch('/api/customers'),
+        fetch('/api/quotations'),
+      ])
+      if (cancelled) return
+      const vList = vRes.ok ? await vRes.json() : []
+      const cList = cRes.ok ? await cRes.json() : []
+      const qList = qRes.ok ? await qRes.json() : []
+      setVendors(vList || [])
+      setCustomers(cList || [])
+      setQuotations((qList || []).filter((q: Quotation) => q.status !== 'rejected' && q.status !== 'expired'))
+      if (order?.quotationId) {
+        const q = (qList || []).find((x: Quotation) => x.id === order.quotationId)
+        if (q) {
+          setSelectedQuotation(q)
+          const items = (q.items || []).map((item: any) => {
+            let quantity = item.quantity
+            if (q.billingType === 'hours' && item.hours) quantity = item.hours
+            else if (q.billingType === 'days' && item.days) quantity = item.days
+            return {
+              description: item.description,
+              quantity,
+              unitPrice: item.unitPrice,
+              tax: item.tax || 0,
+            }
+          })
+          if (items.length > 0) replace(items)
         }
       }
     }
+    load()
+    return () => { cancelled = true }
   }, [order, replace])
 
   const handlePoTypeChange = (type: "vendor" | "customer") => {
@@ -148,11 +147,11 @@ export function PurchaseOrderForm({ order, onSubmit, onCancel }: PurchaseOrderFo
       return
     }
     setValue("quotationId", quotationId)
-    const quotation = quotationService.getById(quotationId)
+    const quotation = quotations.find(q => q.id === quotationId)
     if (quotation) {
       setSelectedQuotation(quotation)
       setValue("customerId", quotation.customerId)
-      setValue("taxRate", quotation.taxRate)
+      setValue("taxRate", FIXED_TAX_RATE)
       
       // Copy items from quotation - handle different billing types
       const quotationItems = quotation.items.map(item => {
@@ -168,33 +167,29 @@ export function PurchaseOrderForm({ order, onSubmit, onCancel }: PurchaseOrderFo
           description: item.description,
           quantity: quantity,
           unitPrice: item.unitPrice,
-          discount: item.discount || 0,
           tax: item.tax || 0,
         }
       })
-      replace(quotationItems.length > 0 ? quotationItems : [{ description: "", quantity: 1, unitPrice: 0, discount: 0, tax: 0 }])
+      replace(quotationItems.length > 0 ? quotationItems : [{ description: "", quantity: 1, unitPrice: 0, tax: 0 }])
     }
   }
 
   const watchedItems = watch("items")
   const watchedTaxRate = watch("taxRate")
 
-  useEffect(() => {
+  // Compute subtotal, tax, total from form values so they update immediately (like Quotation)
+  const { subtotal, taxAmount, total } = (() => {
     let sub = 0
-    watchedItems.forEach((item) => {
-      const itemTotal = item.quantity * item.unitPrice
-      const discountAmount = (itemTotal * item.discount) / 100
-      const afterDiscount = itemTotal - discountAmount
-      sub += afterDiscount
+    ;(watchedItems || []).forEach((item) => {
+      sub += (Number(item?.quantity) || 0) * (Number(item?.unitPrice) || 0)
     })
-    setSubtotal(sub)
-    const tax = (sub * watchedTaxRate) / 100
-    setTaxAmount(tax)
-    setTotal(sub + tax)
-  }, [watchedItems, watchedTaxRate])
+    const rate = FIXED_TAX_RATE
+    const tax = (sub * rate) / 100
+    return { subtotal: sub, taxAmount: tax, total: sub + tax }
+  })()
 
   const addItem = () => {
-    append({ description: "", quantity: 1, unitPrice: 0, discount: 0, tax: 0 })
+    append({ description: "", quantity: 1, unitPrice: 0, tax: 0 })
   }
 
   const onFormSubmit = (data: PurchaseOrderFormData) => {
@@ -208,19 +203,18 @@ export function PurchaseOrderForm({ order, onSubmit, onCancel }: PurchaseOrderFo
       return
     }
 
-    const items: PurchaseOrderItem[] = data.items.map((item, index) => {
-      const itemTotal = item.quantity * item.unitPrice
-      const discountAmount = (itemTotal * item.discount) / 100
-      const afterDiscount = itemTotal - discountAmount
-      const itemTax = (afterDiscount * item.tax) / 100
+    const items: PurchaseOrderItem[] = (data.items || []).map((item, index) => {
+      const qty = item.quantity ?? 0
+      const price = item.unitPrice ?? 0
+      const itemTotal = qty * price
+      const itemTax = (itemTotal * FIXED_TAX_RATE) / 100
       return {
         id: `item-${index}`,
-        description: item.description,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        discount: item.discount,
-        tax: item.tax,
-        total: afterDiscount + itemTax,
+        description: item.description ?? '',
+        quantity: qty,
+        unitPrice: price,
+        tax: FIXED_TAX_RATE,
+        total: itemTotal + itemTax,
       }
     })
 
@@ -230,9 +224,8 @@ export function PurchaseOrderForm({ order, onSubmit, onCancel }: PurchaseOrderFo
       expectedDelivery: data.expectedDelivery,
       items,
       subtotal,
-      taxRate: data.taxRate,
+      taxRate: FIXED_TAX_RATE,
       taxAmount,
-      discount: 0,
       total,
       status: order?.status || (data.poType === "customer" ? "received" : "draft"),
       terms: data.terms || "",
@@ -263,29 +256,29 @@ export function PurchaseOrderForm({ order, onSubmit, onCancel }: PurchaseOrderFo
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="poType">PO Type *</Label>
+          <Label htmlFor="poType">PO Type</Label>
           <Select
             value={poType}
             onValueChange={(value: "vendor" | "customer") => handlePoTypeChange(value)}
           >
-            <SelectTrigger>
+            <SelectTrigger className="border-2 border-blue-400 dark:border-blue-800/60">
               <SelectValue placeholder="Select PO type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="vendor">Vendor PO (من مورد)</SelectItem>
               <SelectItem value="customer">Customer PO (من عميل)</SelectItem>
+              <SelectItem value="vendor">Vendor PO (من مورد)</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         {poType === "vendor" ? (
           <div className="space-y-2">
-            <Label htmlFor="vendorId">Vendor *</Label>
+            <Label htmlFor="vendorId">Vendor</Label>
             <Select
               value={watch("vendorId") || ""}
               onValueChange={(value) => setValue("vendorId", value)}
             >
-              <SelectTrigger>
+              <SelectTrigger className="border-2 border-blue-400 dark:border-blue-800/60">
                 <SelectValue placeholder="Select vendor" />
               </SelectTrigger>
               <SelectContent>
@@ -308,13 +301,13 @@ export function PurchaseOrderForm({ order, onSubmit, onCancel }: PurchaseOrderFo
                 value={watch("quotationId") || ""}
                 onValueChange={(value) => handleQuotationChange(value)}
               >
-                <SelectTrigger>
+                <SelectTrigger className="border-2 border-blue-400 dark:border-blue-800/60">
                   <SelectValue placeholder="Select quotation" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">None</SelectItem>
                   {quotations.map((quotation) => {
-                    const customer = customerService.getById(quotation.customerId)
+                    const customer = customers.find(c => c.id === quotation.customerId)
                     return (
                       <SelectItem key={quotation.id} value={quotation.id}>
                         {quotation.quotationNumber} - {customer?.name || "N/A"} ({quotation.status})
@@ -325,13 +318,13 @@ export function PurchaseOrderForm({ order, onSubmit, onCancel }: PurchaseOrderFo
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="customerId">Customer *</Label>
+              <Label htmlFor="customerId">Customer</Label>
               <Select
                 value={watch("customerId") || ""}
                 onValueChange={(value) => setValue("customerId", value)}
                 disabled={!!selectedQuotation}
               >
-                <SelectTrigger>
+                <SelectTrigger className="border-2 border-blue-400 dark:border-blue-800/60">
                   <SelectValue placeholder="Select customer" />
                 </SelectTrigger>
                 <SelectContent>
@@ -350,16 +343,16 @@ export function PurchaseOrderForm({ order, onSubmit, onCancel }: PurchaseOrderFo
         )}
 
         <div className="space-y-2">
-          <Label htmlFor="date">Date *</Label>
-          <Input type="date" {...register("date")} />
+          <Label htmlFor="date">Date</Label>
+          <Input type="date" className="border-2 border-blue-400 dark:border-blue-800/60" {...register("date")} />
           {errors.date && (
             <p className="text-sm text-destructive">{errors.date.message}</p>
           )}
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="expectedDelivery">Expected Delivery *</Label>
-          <Input type="date" {...register("expectedDelivery")} />
+          <Label htmlFor="expectedDelivery">Expected Delivery</Label>
+          <Input type="date" className="border-2 border-blue-400 dark:border-blue-800/60" {...register("expectedDelivery")} />
           {errors.expectedDelivery && (
             <p className="text-sm text-destructive">{errors.expectedDelivery.message}</p>
           )}
@@ -369,42 +362,40 @@ export function PurchaseOrderForm({ order, onSubmit, onCancel }: PurchaseOrderFo
           <Label htmlFor="taxRate">Tax Rate (%)</Label>
           <Input
             type="number"
-            step="0.01"
-            {...register("taxRate", { valueAsNumber: true })}
+            readOnly
+            value={FIXED_TAX_RATE}
+            className="border-2 border-blue-400 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-900/30 cursor-not-allowed"
           />
         </div>
       </div>
 
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <Label>Items *</Label>
+          <Label>Items</Label>
           <Button type="button" variant="outline" size="sm" onClick={addItem}>
             <Plus className="mr-2 h-4 w-4" />
             Add Item
           </Button>
         </div>
 
-        <div className="rounded-md border">
+        <div className="rounded-md border-2 border-blue-400 dark:border-blue-800/60 overflow-hidden">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Description</TableHead>
-                <TableHead>Quantity</TableHead>
-                <TableHead>Unit Price</TableHead>
-                <TableHead>Discount %</TableHead>
-                <TableHead>Tax %</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead></TableHead>
+              <TableRow className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 dark:from-blue-900 dark:via-blue-800 dark:to-blue-900 border-b-2 border-blue-400 dark:border-blue-600">
+                <TableHead className="font-bold text-white">Description</TableHead>
+                <TableHead className="font-bold text-white">Quantity</TableHead>
+                <TableHead className="font-bold text-white">Unit Price</TableHead>
+                <TableHead className="font-bold text-white">Total</TableHead>
+                <TableHead className="font-bold text-white"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {fields.map((field, index) => {
-                const item = watchedItems[index]
-                const itemTotal = item.quantity * item.unitPrice
-                const discountAmount = (itemTotal * item.discount) / 100
-                const afterDiscount = itemTotal - discountAmount
-                const itemTax = (afterDiscount * item.tax) / 100
-                const itemFinalTotal = afterDiscount + itemTax
+                const item = (watchedItems || [])[index]
+                if (!item) return null
+                const itemTotal = (item.quantity ?? 0) * (item.unitPrice ?? 0)
+                const itemTax = (itemTotal * FIXED_TAX_RATE) / 100
+                const itemFinalTotal = itemTotal + itemTax
 
                 return (
                   <TableRow key={field.id}>
@@ -423,6 +414,7 @@ export function PurchaseOrderForm({ order, onSubmit, onCancel }: PurchaseOrderFo
                       <Input
                         type="number"
                         step="0.01"
+                        className="border-2 border-blue-400 dark:border-blue-800/60"
                         {...register(`items.${index}.quantity`, {
                           valueAsNumber: true,
                         })}
@@ -432,30 +424,13 @@ export function PurchaseOrderForm({ order, onSubmit, onCancel }: PurchaseOrderFo
                       <Input
                         type="number"
                         step="0.01"
+                        className="border-2 border-blue-400 dark:border-blue-800/60"
                         {...register(`items.${index}.unitPrice`, {
                           valueAsNumber: true,
                         })}
                       />
                     </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        {...register(`items.${index}.discount`, {
-                          valueAsNumber: true,
-                        })}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        {...register(`items.${index}.tax`, {
-                          valueAsNumber: true,
-                        })}
-                      />
-                    </TableCell>
-                    <TableCell>{formatCurrency(itemFinalTotal)}</TableCell>
+                    <TableCell className="text-right font-semibold text-blue-900 dark:text-blue-100">{formatCurrency(itemFinalTotal)}</TableCell>
                     <TableCell>
                       {fields.length > 1 && (
                         <Button
@@ -471,6 +446,21 @@ export function PurchaseOrderForm({ order, onSubmit, onCancel }: PurchaseOrderFo
                   </TableRow>
                 )
               })}
+              <TableRow className="bg-blue-50 dark:bg-blue-900/50 font-bold border-t-2 border-blue-300 dark:border-blue-700">
+                <TableCell colSpan={3} className="text-right">Subtotal:</TableCell>
+                <TableCell className="text-right">{formatCurrency(subtotal)}</TableCell>
+                <TableCell></TableCell>
+              </TableRow>
+              <TableRow className="bg-blue-50 dark:bg-blue-900/50 font-bold">
+                <TableCell colSpan={3} className="text-right">Tax ({FIXED_TAX_RATE}%):</TableCell>
+                <TableCell className="text-right">{formatCurrency(taxAmount)}</TableCell>
+                <TableCell></TableCell>
+              </TableRow>
+              <TableRow className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 dark:from-blue-900 dark:via-blue-800 dark:to-blue-900 border-t-2 border-blue-400 dark:border-blue-600">
+                <TableCell colSpan={3} className="text-right text-lg font-bold text-white">Total:</TableCell>
+                <TableCell className="text-right text-lg font-bold text-white">{formatCurrency(total)}</TableCell>
+                <TableCell></TableCell>
+              </TableRow>
             </TableBody>
           </Table>
         </div>
@@ -482,27 +472,12 @@ export function PurchaseOrderForm({ order, onSubmit, onCancel }: PurchaseOrderFo
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="terms">Terms & Conditions</Label>
-          <Textarea {...register("terms")} rows={4} />
+          <Textarea className="border-2 border-blue-400 dark:border-blue-800" {...register("terms")} rows={4} />
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="notes">Notes</Label>
-          <Textarea {...register("notes")} rows={4} />
-        </div>
-      </div>
-
-      <div className="rounded-md border p-4">
-        <div className="flex justify-between mb-2">
-          <span>Subtotal:</span>
-          <span>{formatCurrency(subtotal)}</span>
-        </div>
-        <div className="flex justify-between mb-2">
-          <span>Tax ({watchedTaxRate}%):</span>
-          <span>{formatCurrency(taxAmount)}</span>
-        </div>
-        <div className="flex justify-between font-bold text-lg pt-2 border-t">
-          <span>Total:</span>
-          <span>{formatCurrency(total)}</span>
+          <Textarea className="border-2 border-blue-400 dark:border-blue-800" {...register("notes")} rows={4} />
         </div>
       </div>
 

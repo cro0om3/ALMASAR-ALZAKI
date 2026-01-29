@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Calendar, Clock, AlertCircle } from "lucide-react"
 import { formatDate, calculateDaysRemaining } from "@/lib/utils"
-import { customerService, vendorService, employeeService } from "@/lib/data"
 import Link from "next/link"
 
 interface UpcomingEvent {
@@ -22,88 +21,85 @@ export function UpcomingEvents({ limit = 10 }: { limit?: number }) {
   const [events, setEvents] = useState<UpcomingEvent[]>([])
 
   useEffect(() => {
-    const loadEvents = () => {
-      const allEvents: UpcomingEvent[] = []
-      const today = new Date()
-
-      // Check residence expiries
-      const customers = customerService.getAll()
-      customers.forEach(customer => {
-        if (customer.residenceExpiryDate) {
-          const days = calculateDaysRemaining(customer.residenceExpiryDate)
-          let status: 'expired' | 'critical' | 'warning' | 'upcoming' = 'upcoming'
-          
-          if (days < 0) status = 'expired'
-          else if (days <= 30) status = 'critical'
-          else if (days <= 60) status = 'warning'
-
-          allEvents.push({
-            id: `customer-${customer.id}`,
-            type: 'residence_expiry',
-            title: `${customer.name} - Residence Expiry`,
-            date: customer.residenceExpiryDate,
-            daysRemaining: days,
-            status,
-            link: `/customers/${customer.id}`,
-          })
-        }
-      })
-
-      const vendors = vendorService.getAll()
-      vendors.forEach(vendor => {
-        if (vendor.residenceExpiryDate) {
-          const days = calculateDaysRemaining(vendor.residenceExpiryDate)
-          let status: 'expired' | 'critical' | 'warning' | 'upcoming' = 'upcoming'
-          
-          if (days < 0) status = 'expired'
-          else if (days <= 30) status = 'critical'
-          else if (days <= 60) status = 'warning'
-
-          allEvents.push({
-            id: `vendor-${vendor.id}`,
-            type: 'residence_expiry',
-            title: `${vendor.name} - Residence Expiry`,
-            date: vendor.residenceExpiryDate,
-            daysRemaining: days,
-            status,
-            link: `/vendors/${vendor.id}`,
-          })
-        }
-      })
-
-      const employees = employeeService.getAll()
-      employees.forEach(employee => {
-        if (employee.residenceExpiryDate) {
-          const days = calculateDaysRemaining(employee.residenceExpiryDate)
-          let status: 'expired' | 'critical' | 'warning' | 'upcoming' = 'upcoming'
-          
-          if (days < 0) status = 'expired'
-          else if (days <= 30) status = 'critical'
-          else if (days <= 60) status = 'warning'
-
-          allEvents.push({
-            id: `employee-${employee.id}`,
-            type: 'residence_expiry',
-            title: `${employee.firstName} ${employee.lastName} - Residence Expiry`,
-            date: employee.residenceExpiryDate,
-            daysRemaining: days,
-            status,
-            link: `/employees/${employee.id}`,
-          })
-        }
-      })
-
-      // Sort by urgency (expired first, then by days remaining)
-      allEvents.sort((a, b) => {
-        if (a.status === 'expired' && b.status !== 'expired') return -1
-        if (a.status !== 'expired' && b.status === 'expired') return 1
-        return a.daysRemaining - b.daysRemaining
-      })
-
-      setEvents(allEvents.slice(0, limit))
+    let cancelled = false
+    const loadEvents = async () => {
+      try {
+        const [custRes, vendRes, empRes] = await Promise.all([
+          fetch('/api/customers'),
+          fetch('/api/vendors'),
+          fetch('/api/employees'),
+        ])
+        if (cancelled) return
+        const customers = custRes.ok ? await custRes.json() : []
+        const vendors = vendRes.ok ? await vendRes.json() : []
+        const employees = empRes.ok ? await empRes.json() : []
+        const allEvents: UpcomingEvent[] = []
+        ;(customers || []).forEach((customer: any) => {
+          if (customer.residenceExpiryDate) {
+            const days = calculateDaysRemaining(customer.residenceExpiryDate)
+            let status: 'expired' | 'critical' | 'warning' | 'upcoming' = 'upcoming'
+            if (days < 0) status = 'expired'
+            else if (days <= 30) status = 'critical'
+            else if (days <= 60) status = 'warning'
+            allEvents.push({
+              id: `customer-${customer.id}`,
+              type: 'residence_expiry',
+              title: `${customer.name} - Residence Expiry`,
+              date: customer.residenceExpiryDate,
+              daysRemaining: days,
+              status,
+              link: `/customers/${customer.id}`,
+            })
+          }
+        })
+        ;(vendors || []).forEach((vendor: any) => {
+          if (vendor.residenceExpiryDate) {
+            const days = calculateDaysRemaining(vendor.residenceExpiryDate)
+            let status: 'expired' | 'critical' | 'warning' | 'upcoming' = 'upcoming'
+            if (days < 0) status = 'expired'
+            else if (days <= 30) status = 'critical'
+            else if (days <= 60) status = 'warning'
+            allEvents.push({
+              id: `vendor-${vendor.id}`,
+              type: 'residence_expiry',
+              title: `${vendor.name} - Residence Expiry`,
+              date: vendor.residenceExpiryDate,
+              daysRemaining: days,
+              status,
+              link: `/vendors/${vendor.id}`,
+            })
+          }
+        })
+        ;(employees || []).forEach((employee: any) => {
+          if (employee.residenceExpiryDate) {
+            const days = calculateDaysRemaining(employee.residenceExpiryDate)
+            let status: 'expired' | 'critical' | 'warning' | 'upcoming' = 'upcoming'
+            if (days < 0) status = 'expired'
+            else if (days <= 30) status = 'critical'
+            else if (days <= 60) status = 'warning'
+            allEvents.push({
+              id: `employee-${employee.id}`,
+              type: 'residence_expiry',
+              title: `${employee.firstName} ${employee.lastName} - Residence Expiry`,
+              date: employee.residenceExpiryDate,
+              daysRemaining: days,
+              status,
+              link: `/employees/${employee.id}`,
+            })
+          }
+        })
+        allEvents.sort((a, b) => {
+          if (a.status === 'expired' && b.status !== 'expired') return -1
+          if (a.status !== 'expired' && b.status === 'expired') return 1
+          return a.daysRemaining - b.daysRemaining
+        })
+        if (!cancelled) setEvents(allEvents.slice(0, limit))
+      } catch (_e) {
+        if (!cancelled) setEvents([])
+      }
     }
-
     loadEvents()
+    return () => { cancelled = true }
   }, [limit])
 
   const getStatusBadge = (status: UpcomingEvent['status']) => {
@@ -121,7 +117,7 @@ export function UpcomingEvents({ limit = 10 }: { limit?: number }) {
 
   if (events.length === 0) {
     return (
-      <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card">
         <CardHeader>
           <CardTitle className="text-lg font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2">
             <Calendar className="h-5 w-5 text-gold dark:text-yellow-400" />
@@ -138,7 +134,7 @@ export function UpcomingEvents({ limit = 10 }: { limit?: number }) {
   }
 
   return (
-    <Card className="border-2 border-blue-200/60 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
+    <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card hover:shadow-card-hover transition-all duration-300 bg-gradient-card">
       <CardHeader>
         <CardTitle className="text-lg font-bold text-blue-900 dark:text-blue-100 flex items-center gap-2">
           <Calendar className="h-5 w-5 text-gold dark:text-yellow-400" />

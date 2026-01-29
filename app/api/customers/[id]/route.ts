@@ -1,22 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { dbCustomerService } from '@/lib/data/db-service'
+import { createServerClient } from '@/lib/supabase-server'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const customer = await dbCustomerService.getById(params.id)
-    if (!customer) {
+    const supabase = createServerClient()
+    const { data: customer, error } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('id', params.id)
+      .single()
+
+    if (error || !customer) {
       return NextResponse.json(
         { error: 'Customer not found' },
         { status: 404 }
       )
     }
     return NextResponse.json(customer)
-  } catch (error) {
+  } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to fetch customer' },
+      { error: 'Failed to fetch customer', details: error.message },
       { status: 500 }
     )
   }
@@ -28,11 +34,25 @@ export async function PUT(
 ) {
   try {
     const body = await request.json()
-    const customer = await dbCustomerService.update(params.id, body)
+    const supabase = createServerClient()
+    
+    const { data: customer, error } = await supabase
+      .from('customers')
+      .update({ ...body, updatedAt: new Date().toISOString() })
+      .eq('id', params.id)
+      .select()
+      .single()
+
+    if (error) {
+      return NextResponse.json(
+        { error: 'Failed to update customer', details: error.message },
+        { status: 500 }
+      )
+    }
     return NextResponse.json(customer)
-  } catch (error) {
+  } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to update customer' },
+      { error: 'Failed to update customer', details: error.message },
       { status: 500 }
     )
   }
@@ -43,11 +63,22 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await dbCustomerService.delete(params.id)
+    const supabase = createServerClient()
+    const { error } = await supabase
+      .from('customers')
+      .delete()
+      .eq('id', params.id)
+
+    if (error) {
+      return NextResponse.json(
+        { error: 'Failed to delete customer', details: error.message },
+        { status: 500 }
+      )
+    }
     return NextResponse.json({ success: true })
-  } catch (error) {
+  } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to delete customer' },
+      { error: 'Failed to delete customer', details: error.message },
       { status: 500 }
     )
   }

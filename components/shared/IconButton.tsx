@@ -31,7 +31,7 @@ export function IconButton({
 
   const variantClasses = {
     default: "bg-blue-600 hover:bg-blue-700 text-white",
-    outline: "border-2 border-blue-200/60 dark:border-blue-800/60 hover:bg-blue-50 dark:hover:bg-blue-900",
+    outline: "border-2 border-blue-400 dark:border-blue-800/60 hover:bg-blue-50 dark:hover:bg-blue-900",
     ghost: "hover:bg-blue-50 dark:hover:bg-blue-900",
     gold: "bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-blue-900 shadow-gold",
   }

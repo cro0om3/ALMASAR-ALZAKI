@@ -44,7 +44,6 @@ export interface QuotationItem {
   description: string
   quantity: number
   unitPrice: number
-  discount: number
   tax: number
   total: number
   // Support for hours/days billing
@@ -67,7 +66,6 @@ export interface Quotation {
   subtotal: number
   taxRate: number
   taxAmount: number
-  discount: number
   total: number
   status: QuotationStatus
   terms: string
@@ -81,7 +79,6 @@ export interface PurchaseOrderItem {
   description: string
   quantity: number
   unitPrice: number
-  discount: number
   tax: number
   total: number
 }
@@ -102,7 +99,6 @@ export interface PurchaseOrder {
   subtotal: number
   taxRate: number
   taxAmount: number
-  discount: number
   total: number
   status: PurchaseOrderStatus
   terms: string
@@ -116,7 +112,6 @@ export interface InvoiceItem {
   description: string
   quantity: number
   unitPrice: number
-  discount: number
   tax: number
   total: number
   hours?: number
@@ -142,7 +137,6 @@ export interface Invoice {
   subtotal: number
   taxRate: number
   taxAmount: number
-  discount: number
   total: number
   paidAmount: number
   status: InvoiceStatus

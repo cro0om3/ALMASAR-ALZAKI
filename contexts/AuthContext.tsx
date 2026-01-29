@@ -2,7 +2,13 @@
 
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { userService, type User } from '@/lib/data/user-service'
+
+export interface User {
+  id: string
+  email: string
+  name: string
+  role: 'admin' | 'user' | 'manager'
+}
 
 interface AuthContextType {
   user: User | null
@@ -85,17 +91,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshUser = async () => {
     if (!user) return
     try {
-      const updatedUser = await userService.getById(user.id)
-      if (updatedUser) {
-        const userToStore = {
-          id: updatedUser.id,
-          email: updatedUser.email,
-          name: updatedUser.name,
-          role: updatedUser.role,
-        }
-        localStorage.setItem('auth_user', JSON.stringify(userToStore))
-        setUser(updatedUser)
+      const res = await fetch(`/api/users/${user.id}`)
+      if (!res.ok) return
+      const updatedUser = await res.json()
+      const userToStore = {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        role: updatedUser.role,
       }
+      localStorage.setItem('auth_user', JSON.stringify(userToStore))
+      setUser(updatedUser)
     } catch (error) {
       console.error('Error refreshing user:', error)
     }
@@ -116,10 +122,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
+const defaultAuthValue: AuthContextType = {
+  user: null,
+  loading: true,
+  signIn: async () => {},
+  signOut: async () => {},
+  refreshUser: async () => {},
+}
+
 export function useAuth() {
   const context = useContext(AuthContext)
+  // During SSR or if used outside provider, return safe defaults so the app doesn't crash
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider')
+    return defaultAuthValue
   }
   return context
 }

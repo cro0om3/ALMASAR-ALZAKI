@@ -12,28 +12,59 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Plus, Search, Edit, Trash2, Eye, Building2 } from "lucide-react"
-import { vendorService } from "@/lib/data"
+import { Plus, Search, Edit, Trash2, Eye, Building2, Download, FileSpreadsheet, FileText, File } from "lucide-react"
 import { Vendor } from "@/types"
 import { useRouter } from "next/navigation"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { Card } from "@/components/ui/card"
 import { usePermissions } from "@/lib/hooks/use-permissions"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { exportVendorToExcel, exportVendorToWord, exportVendorToPDF } from "@/lib/utils/export-utils"
+import { useToast } from "@/lib/hooks/use-toast"
 
 export default function VendorsPage() {
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
   const { canEdit, canDelete } = usePermissions()
 
   useEffect(() => {
-    setVendors(vendorService.getAll())
+    loadVendors()
   }, [])
 
-  const handleDelete = (id: string) => {
+  const loadVendors = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/vendors')
+      if (!response.ok) throw new Error('Failed to load vendors')
+      const data = await response.json()
+      setVendors(data)
+    } catch (error: any) {
+      console.error('Error loading vendors:', error)
+      setVendors([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this vendor?")) {
-      vendorService.delete(id)
-      setVendors(vendorService.getAll())
+      try {
+        const response = await fetch(`/api/vendors/${id}`, {
+          method: 'DELETE',
+        })
+        if (!response.ok) throw new Error('Failed to delete vendor')
+        await loadVendors() // Reload from API
+      } catch (error: any) {
+        console.error('Error deleting vendor:', error)
+        alert('Failed to delete vendor. Please try again.')
+      }
     }
   }
 
@@ -62,20 +93,29 @@ export default function VendorsPage() {
         />
       </div>
 
-      <Card className="border-2 border-blue-200/60 shadow-card overflow-hidden">
+      <Card className="border-2 border-blue-400 dark:border-blue-800/60 shadow-card overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-900/50 dark:to-blue-800/50 border-b-2 border-blue-200 dark:border-blue-800">
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Name</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Email</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Phone</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Contact Person</TableHead>
-              <TableHead className="font-bold text-blue-900 dark:text-blue-100">Address</TableHead>
-              <TableHead className="text-right font-bold text-blue-900 dark:text-blue-100">Actions</TableHead>
+            <TableRow className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 dark:from-blue-900 dark:via-blue-800 dark:to-blue-900 border-b-0">
+              <TableHead className="font-bold text-white">Name</TableHead>
+              <TableHead className="font-bold text-white">Email</TableHead>
+              <TableHead className="font-bold text-white">Phone</TableHead>
+              <TableHead className="font-bold text-white">Contact Person</TableHead>
+              <TableHead className="font-bold text-white">Address</TableHead>
+              <TableHead className="text-right font-bold text-white">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredVendors.length === 0 ? (
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-16">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <p className="text-gray-500 dark:text-gray-300 font-medium">Loading vendors...</p>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : filteredVendors.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-16">
                   <div className="flex flex-col items-center gap-3">
