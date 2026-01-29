@@ -1,16 +1,15 @@
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables')
-}
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
 
 // Server-side client with service role key (for admin operations)
 export function createServerClient() {
+  if (!supabaseUrl || (!supabaseServiceKey && !supabaseAnonKey)) {
+    throw new Error('Missing Supabase environment variables (NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY)')
+  }
   if (supabaseServiceKey) {
     return createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
@@ -19,7 +18,9 @@ export function createServerClient() {
       },
     })
   }
-  
+  if (!supabaseAnonKey) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY')
+  }
   // Fallback to anon key with user session
   const cookieStore = cookies()
   const accessToken = cookieStore.get('sb-access-token')?.value

@@ -1,0 +1,7 @@
+# انسخ من هنا ولصق في Vercel (Settings → Environment Variables) أو في .env.local
+# استبدل YOUR_DB_PASSWORD بكلمة سر قاعدة البيانات من Supabase إن لزم
+
+NEXT_PUBLIC_SUPABASE_URL=https://ebelbztbpzccdhytynnc.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_hDEEzbaiJX0-4cdeE4BVbQ_8WqAAbs5
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_t0LnDUHEPTMSNez6PyLlqg_udKq1Zmq
+DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@db.ebelbztbpzccdhytynnc.supabase.co:5432/postgres?sslmode=require

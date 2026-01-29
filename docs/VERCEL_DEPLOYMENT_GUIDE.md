@@ -80,6 +80,8 @@
 
 بدون متغيرات البيئة الصحيحة، التطبيق على Vercel **لن يتصل بـ Supabase** وسيفشل تسجيل الدخول وكل العمليات التي تحتاج قاعدة البيانات.
 
+**نسخ من env-for-vercel.txt:** في جذر المشروع يوجد ملف **`env-for-vercel.txt`** (غير مرفوع على Git) يحتوي القيم الجاهزة. افتحه ثم في Vercel → **Settings** → **Environment Variables** أضف كل سطر: **Name** = الجزء قبل `=`، **Value** = الجزء بعد `=` (بدون مسافات زائدة). احفظ ثم **Redeploy**.
+
 ### من لوحة Vercel
 
 1. من صفحة المشروع على Vercel: **Settings** → **Environment Variables**.
